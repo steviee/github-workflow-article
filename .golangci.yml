@@ -272,6 +272,18 @@ issues:
         - gocognit
       text: "of func `(main|init)`"
 
+    # Allow os.Exit in main (exitAfterDefer is acceptable in cmd/main.go)
+    - path: cmd/api/main\.go
+      linters:
+        - gocritic
+      text: "exitAfterDefer"
+
+    # Allow non-optimal field alignment in config structs for clarity
+    - path: internal/config/config\.go
+      linters:
+        - govet
+      text: "fieldalignment"
+
   # Independently of option `exclude` we use default exclude patterns
   exclude-use-default: false
 
