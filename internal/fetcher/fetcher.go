@@ -107,9 +107,9 @@ func (f *Fetcher) Fetch(url string) (*FetchResult, error) {
 	}
 
 	return &FetchResult{
-		Data: data,
-		Size: size,
+		Data:        data,
+		Size:        size,
 		ContentType: contentType,
-		URL: url,
+		URL:         url,
 	}, nil
 }
