@@ -24,11 +24,13 @@ A high-performance REST API service built with Go 1.25.x for fetching, caching, 
 
 - [Quick Start](#quick-start)
 - [API Documentation](#api-documentation)
+- [Usage Examples](#usage-examples)
 - [Architecture](#architecture)
 - [Deployment](#deployment)
 - [Development](#development)
 - [Monitoring](#monitoring)
 - [Configuration](#configuration)
+- [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 
 ## Quick Start
@@ -222,6 +224,478 @@ All errors generate placeholder PNG images:
 
 Placeholders respect requested dimensions (or default to 400x300).
 
+## Usage Examples
+
+### Comprehensive cURL Examples
+
+#### Basic Image Fetching
+
+```bash
+# Fetch and convert to PNG (no operations)
+curl "http://localhost:8080/image?url=https://picsum.photos/800/600" \
+  -o image.png
+
+# Verify cache MISS on first request
+curl -v "http://localhost:8080/image?url=https://picsum.photos/800/600&op=rotate-90" \
+  -o rotated.png 2>&1 | grep "X-Cache: MISS"
+
+# Verify cache HIT on second request
+curl -v "http://localhost:8080/image?url=https://picsum.photos/800/600&op=rotate-90" \
+  -o rotated.png 2>&1 | grep "X-Cache: HIT"
+```
+
+#### Rotation Operations
+
+```bash
+# Rotate 90 degrees clockwise
+curl "http://localhost:8080/image?url=https://picsum.photos/1200/800&op=rotate-90" \
+  -o rotate-90.png
+
+# Rotate 180 degrees
+curl "http://localhost:8080/image?url=https://picsum.photos/1000/1000&op=rotate-180" \
+  -o rotate-180.png
+
+# Rotate 270 degrees (90 degrees counter-clockwise)
+curl "http://localhost:8080/image?url=https://picsum.photos/600/400&op=rotate-270" \
+  -o rotate-270.png
+```
+
+#### Resize Operations
+
+```bash
+# Resize to 800x600 (aspect-ratio preserving crop/zoom)
+curl "http://localhost:8080/image?url=https://picsum.photos/1920/1080&op=resize-800x600" \
+  -o resized-800x600.png
+
+# Resize to square dimensions
+curl "http://localhost:8080/image?url=https://picsum.photos/1600/900&op=resize-500x500" \
+  -o square-500.png
+
+# Resize to maximum allowed dimensions
+curl "http://localhost:8080/image?url=https://picsum.photos/3000/2000&op=resize-1400x1400" \
+  -o max-size.png
+```
+
+#### Complex Operation Chains
+
+```bash
+# Rotate then resize
+curl "http://localhost:8080/image?url=https://picsum.photos/1920/1080&op=rotate-90,resize-800x600" \
+  -o rotated-then-resized.png
+
+# Multiple rotations (net 180 degrees)
+curl "http://localhost:8080/image?url=https://picsum.photos/1000/800&op=rotate-90,rotate-90" \
+  -o double-rotated.png
+
+# Resize then rotate (portrait from landscape)
+curl "http://localhost:8080/image?url=https://picsum.photos/1600/900&op=resize-600x800,rotate-270" \
+  -o portrait.png
+
+# Complex chain: resize, rotate, resize again
+curl "http://localhost:8080/image?url=https://picsum.photos/2000/1500&op=resize-1000x1000,rotate-90,resize-800x600" \
+  -o complex-chain.png
+```
+
+#### Error Scenarios
+
+```bash
+# Invalid URL (400 Bad Request - Orange placeholder)
+curl "http://localhost:8080/image?url=not-a-valid-url" \
+  -o error-400.png
+
+# Missing URL parameter (400 Bad Request)
+curl "http://localhost:8080/image" \
+  -o error-missing-url.png
+
+# Invalid operation (400 Bad Request)
+curl "http://localhost:8080/image?url=https://picsum.photos/800/600&op=invalid-op" \
+  -o error-invalid-op.png
+
+# Image too large (400 Bad Request)
+curl "http://localhost:8080/image?url=https://example.com/huge-100mb-image.jpg" \
+  -o error-too-large.png
+
+# Unreachable URL (500 Internal Server Error - Red placeholder)
+curl "http://localhost:8080/image?url=https://nonexistent-domain-12345.com/image.jpg" \
+  -o error-500.png
+```
+
+### JavaScript/Fetch Example
+
+```javascript
+/**
+ * Fetch and process an image using the Image API
+ * @param {string} imageUrl - Source image URL
+ * @param {string[]} operations - Array of operations to apply
+ * @returns {Promise<Blob>} Processed image as PNG blob
+ */
+async function fetchProcessedImage(imageUrl, operations = []) {
+  const apiUrl = 'http://localhost:8080/image';
+  const params = new URLSearchParams({
+    url: imageUrl
+  });
+
+  if (operations.length > 0) {
+    params.append('op', operations.join(','));
+  }
+
+  const response = await fetch(`${apiUrl}?${params}`);
+
+  if (!response.ok) {
+    // API returns error placeholders as PNG images
+    console.warn(`API returned status ${response.status}`);
+  }
+
+  const cacheStatus = response.headers.get('X-Cache') || 'SKIP';
+  console.log(`Cache status: ${cacheStatus}`);
+
+  return await response.blob();
+}
+
+// Usage examples
+async function examples() {
+  // Simple fetch
+  const simple = await fetchProcessedImage('https://picsum.photos/800/600');
+
+  // With rotation
+  const rotated = await fetchProcessedImage(
+    'https://picsum.photos/1200/800',
+    ['rotate-90']
+  );
+
+  // Complex operations
+  const complex = await fetchProcessedImage(
+    'https://picsum.photos/1920/1080',
+    ['rotate-180', 'resize-800x600']
+  );
+
+  // Display in browser
+  const imgElement = document.createElement('img');
+  imgElement.src = URL.createObjectURL(complex);
+  document.body.appendChild(imgElement);
+}
+
+// Download processed image
+async function downloadImage(imageUrl, operations, filename) {
+  const blob = await fetchProcessedImage(imageUrl, operations);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Example: Download rotated and resized image
+downloadImage(
+  'https://picsum.photos/1600/900',
+  ['rotate-90', 'resize-800x600'],
+  'processed-image.png'
+);
+```
+
+### Python/Requests Example
+
+```python
+#!/usr/bin/env python3
+"""
+Image Processing API Client - Python Example
+
+Usage:
+    python image_client.py
+"""
+
+import requests
+from typing import List, Optional
+from pathlib import Path
+
+
+class ImageAPIClient:
+    """Client for the Image Processing REST API"""
+
+    def __init__(self, base_url: str = "http://localhost:8080"):
+        self.base_url = base_url
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'ImageAPIClient/1.0 (Python)'
+        })
+
+    def fetch_image(
+        self,
+        url: str,
+        operations: Optional[List[str]] = None,
+        output_path: Optional[Path] = None
+    ) -> bytes:
+        """
+        Fetch and process an image
+
+        Args:
+            url: Source image URL
+            operations: List of operations to apply (e.g., ['rotate-90', 'resize-800x600'])
+            output_path: Optional path to save the image
+
+        Returns:
+            Image data as bytes (PNG format)
+
+        Raises:
+            requests.HTTPError: If the request fails
+        """
+        params = {'url': url}
+        if operations:
+            params['op'] = ','.join(operations)
+
+        response = self.session.get(
+            f"{self.base_url}/image",
+            params=params,
+            timeout=30
+        )
+
+        # Log cache status
+        cache_status = response.headers.get('X-Cache', 'SKIP')
+        print(f"Cache status: {cache_status}")
+
+        # API returns error placeholders as images, check status
+        if response.status_code >= 400:
+            print(f"Warning: API returned status {response.status_code}")
+
+        response.raise_for_status()
+
+        image_data = response.content
+
+        # Save to file if path provided
+        if output_path:
+            output_path.write_bytes(image_data)
+            print(f"Image saved to: {output_path}")
+
+        return image_data
+
+    def health_check(self) -> bool:
+        """Check if the API is healthy"""
+        try:
+            response = self.session.get(f"{self.base_url}/health", timeout=5)
+            return response.status_code == 200
+        except requests.RequestException:
+            return False
+
+
+def main():
+    """Example usage"""
+    client = ImageAPIClient()
+
+    # Check API health
+    if not client.health_check():
+        print("ERROR: API is not healthy!")
+        return
+
+    print("API is healthy ✓\n")
+
+    # Example 1: Simple fetch
+    print("Example 1: Fetching image...")
+    client.fetch_image(
+        url="https://picsum.photos/800/600",
+        output_path=Path("simple.png")
+    )
+
+    # Example 2: Rotate 90 degrees
+    print("\nExample 2: Rotating image 90°...")
+    client.fetch_image(
+        url="https://picsum.photos/1200/800",
+        operations=["rotate-90"],
+        output_path=Path("rotated-90.png")
+    )
+
+    # Example 3: Resize
+    print("\nExample 3: Resizing image...")
+    client.fetch_image(
+        url="https://picsum.photos/1920/1080",
+        operations=["resize-800x600"],
+        output_path=Path("resized.png")
+    )
+
+    # Example 4: Complex operation chain
+    print("\nExample 4: Complex operations (rotate + resize)...")
+    client.fetch_image(
+        url="https://picsum.photos/1600/900",
+        operations=["rotate-180", "resize-1000x1000"],
+        output_path=Path("complex.png")
+    )
+
+    # Example 5: Cache test (second request should be cached)
+    print("\nExample 5: Testing cache (making same request twice)...")
+    client.fetch_image(
+        url="https://picsum.photos/800/600",
+        operations=["rotate-90"]
+    )
+    print("Making same request again...")
+    client.fetch_image(
+        url="https://picsum.photos/800/600",
+        operations=["rotate-90"]
+    )
+
+    print("\n✓ All examples completed successfully!")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+### Go/net/http Example
+
+```go
+package main
+
+import (
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
+	"time"
+)
+
+// ImageAPIClient is a client for the Image Processing REST API
+type ImageAPIClient struct {
+	BaseURL    string
+	HTTPClient *http.Client
+}
+
+// NewImageAPIClient creates a new API client
+func NewImageAPIClient(baseURL string) *ImageAPIClient {
+	return &ImageAPIClient{
+		BaseURL: baseURL,
+		HTTPClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
+}
+
+// FetchImage fetches and processes an image
+func (c *ImageAPIClient) FetchImage(imageURL string, operations []string, outputPath string) error {
+	// Build request URL
+	reqURL := fmt.Sprintf("%s/image?url=%s", c.BaseURL, url.QueryEscape(imageURL))
+	if len(operations) > 0 {
+		reqURL += "&op=" + url.QueryEscape(strings.Join(operations, ","))
+	}
+
+	// Make request
+	resp, err := c.HTTPClient.Get(reqURL)
+	if err != nil {
+		return fmt.Errorf("failed to fetch image: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Log cache status
+	cacheStatus := resp.Header.Get("X-Cache")
+	if cacheStatus == "" {
+		cacheStatus = "SKIP"
+	}
+	fmt.Printf("Cache status: %s\n", cacheStatus)
+
+	// Check status code (API returns error placeholders as images)
+	if resp.StatusCode >= 400 {
+		fmt.Printf("Warning: API returned status %d\n", resp.StatusCode)
+	}
+
+	// Save to file
+	file, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create file: %w", err)
+	}
+	defer file.Close()
+
+	_, err = io.Copy(file, resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to write image data: %w", err)
+	}
+
+	fmt.Printf("Image saved to: %s\n", outputPath)
+	return nil
+}
+
+// HealthCheck checks if the API is healthy
+func (c *ImageAPIClient) HealthCheck() (bool, error) {
+	resp, err := c.HTTPClient.Get(c.BaseURL + "/health")
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == 200, nil
+}
+
+func main() {
+	client := NewImageAPIClient("http://localhost:8080")
+
+	// Check API health
+	healthy, err := client.HealthCheck()
+	if err != nil || !healthy {
+		fmt.Println("ERROR: API is not healthy!")
+		os.Exit(1)
+	}
+	fmt.Println("API is healthy ✓\n")
+
+	// Example 1: Simple fetch
+	fmt.Println("Example 1: Fetching image...")
+	err = client.FetchImage(
+		"https://picsum.photos/800/600",
+		nil,
+		"simple.png",
+	)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+	}
+
+	// Example 2: Rotate 90 degrees
+	fmt.Println("\nExample 2: Rotating image 90°...")
+	err = client.FetchImage(
+		"https://picsum.photos/1200/800",
+		[]string{"rotate-90"},
+		"rotated-90.png",
+	)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+	}
+
+	// Example 3: Resize
+	fmt.Println("\nExample 3: Resizing image...")
+	err = client.FetchImage(
+		"https://picsum.photos/1920/1080",
+		[]string{"resize-800x600"},
+		"resized.png",
+	)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+	}
+
+	// Example 4: Complex operation chain
+	fmt.Println("\nExample 4: Complex operations (rotate + resize)...")
+	err = client.FetchImage(
+		"https://picsum.photos/1600/900",
+		[]string{"rotate-180", "resize-1000x1000"},
+		"complex.png",
+	)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+	}
+
+	// Example 5: Cache test
+	fmt.Println("\nExample 5: Testing cache (making same request twice)...")
+	_ = client.FetchImage(
+		"https://picsum.photos/800/600",
+		[]string{"rotate-90"},
+		"cache-test-1.png",
+	)
+	fmt.Println("Making same request again...")
+	_ = client.FetchImage(
+		"https://picsum.photos/800/600",
+		[]string{"rotate-90"},
+		"cache-test-2.png",
+	)
+
+	fmt.Println("\n✓ All examples completed successfully!")
+}
+```
+
 ## Deployment
 
 ### Prerequisites
@@ -408,25 +882,274 @@ See [CLAUDE.md](CLAUDE.md) for detailed development workflow and contribution gu
 The service exposes Prometheus metrics on `/metrics`:
 
 ```yaml
-# prometheus.yml
+# prometheus.yml - Basic configuration
 scrape_configs:
   - job_name: 'image-api'
     static_configs:
       - targets: ['localhost:8080']
     scrape_interval: 15s
+    scrape_timeout: 10s
+```
+
+**Docker Compose with Prometheus:**
+
+```yaml
+version: '3.8'
+
+services:
+  image-api:
+    image: ghcr.io/steviee/github-workflow-article:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - CACHE_TTL=5m
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
 ```
 
 ### Key Metrics to Monitor
 
-1. **Request Rate**: `rate(http_requests_total[5m])`
-2. **Error Rate**: `rate(http_requests_total{status=~"5.."}[5m])`
-3. **Latency P95**: `histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))`
-4. **Cache Hit Rate**: `rate(image_cache_hits_total[5m]) / (rate(image_cache_hits_total[5m]) + rate(image_cache_misses_total[5m]))`
-5. **Cache Size**: `image_cache_size`
+#### Available Metrics
+
+| Metric Name | Type | Description |
+|-------------|------|-------------|
+| `http_requests_total` | Counter | Total HTTP requests by status code and endpoint |
+| `http_request_duration_seconds` | Histogram | HTTP request latency distribution |
+| `image_cache_hits_total` | Counter | Number of cache hits |
+| `image_cache_misses_total` | Counter | Number of cache misses |
+| `image_cache_size` | Gauge | Current number of cached images |
+| `image_processing_duration_seconds` | Histogram | Image processing time distribution |
+| `image_fetch_duration_seconds` | Histogram | Image download time distribution |
+
+#### Essential Prometheus Queries
+
+**1. Request Rate (requests per second):**
+```promql
+rate(http_requests_total[5m])
+```
+
+**2. Error Rate (5xx errors per second):**
+```promql
+rate(http_requests_total{status=~"5.."}[5m])
+```
+
+**3. Error Percentage:**
+```promql
+100 * (
+  sum(rate(http_requests_total{status=~"5.."}[5m]))
+  /
+  sum(rate(http_requests_total[5m]))
+)
+```
+
+**4. Request Latency P50, P95, P99:**
+```promql
+# P50 (median)
+histogram_quantile(0.50, rate(http_request_duration_seconds_bucket[5m]))
+
+# P95
+histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+
+# P99
+histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))
+```
+
+**5. Cache Hit Rate (percentage):**
+```promql
+100 * (
+  rate(image_cache_hits_total[5m])
+  /
+  (rate(image_cache_hits_total[5m]) + rate(image_cache_misses_total[5m]))
+)
+```
+
+**6. Cache Size (current number of entries):**
+```promql
+image_cache_size
+```
+
+**7. Image Processing Performance:**
+```promql
+# Average processing time
+rate(image_processing_duration_seconds_sum[5m]) / rate(image_processing_duration_seconds_count[5m])
+
+# P95 processing time
+histogram_quantile(0.95, rate(image_processing_duration_seconds_bucket[5m]))
+```
+
+**8. Image Fetch Performance:**
+```promql
+# Average fetch time
+rate(image_fetch_duration_seconds_sum[5m]) / rate(image_fetch_duration_seconds_count[5m])
+
+# P95 fetch time
+histogram_quantile(0.95, rate(image_fetch_duration_seconds_bucket[5m]))
+```
+
+**9. Requests by Endpoint:**
+```promql
+sum by (endpoint) (rate(http_requests_total[5m]))
+```
+
+**10. Requests by Status Code:**
+```promql
+sum by (status) (rate(http_requests_total[5m]))
+```
+
+### Alerting Rules
+
+Example Prometheus alerting rules:
+
+```yaml
+# alerts.yml
+groups:
+  - name: image-api-alerts
+    interval: 30s
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          100 * (
+            sum(rate(http_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total[5m]))
+          ) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value }}% (threshold: 5%)"
+
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High request latency detected"
+          description: "P95 latency is {{ $value }}s (threshold: 2s)"
+
+      - alert: LowCacheHitRate
+        expr: |
+          100 * (
+            rate(image_cache_hits_total[5m])
+            /
+            (rate(image_cache_hits_total[5m]) + rate(image_cache_misses_total[5m]))
+          ) < 50
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "Low cache hit rate"
+          description: "Cache hit rate is {{ $value }}% (threshold: 50%)"
+
+      - alert: ServiceDown
+        expr: up{job="image-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Image API service is down"
+          description: "The image-api service has been down for more than 1 minute"
+
+      - alert: HighMemoryUsage
+        expr: image_cache_size > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High cache memory usage"
+          description: "Cache has {{ $value }} entries (threshold: 1000)"
+```
 
 ### Grafana Dashboard
 
-(TODO: Add Grafana dashboard JSON once deployed)
+Import this JSON to create a comprehensive dashboard:
+
+```json
+{
+  "dashboard": {
+    "title": "Image Processing API",
+    "panels": [
+      {
+        "title": "Request Rate",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total[5m])"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Error Rate",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total{status=~\"5..\"}[5m])"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Cache Hit Rate %",
+        "targets": [
+          {
+            "expr": "100 * (rate(image_cache_hits_total[5m]) / (rate(image_cache_hits_total[5m]) + rate(image_cache_misses_total[5m])))"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Latency Percentiles",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "P50"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "P95"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "P99"
+          }
+        ],
+        "type": "graph"
+      }
+    ]
+  }
+}
+```
+
+### Testing Metrics
+
+Verify metrics are being exposed:
+
+```bash
+# Fetch raw metrics
+curl http://localhost:8080/metrics
+
+# Check specific metric
+curl -s http://localhost:8080/metrics | grep http_requests_total
+
+# Query Prometheus API
+curl 'http://localhost:9090/api/v1/query?query=rate(http_requests_total[5m])'
+```
 
 ## Configuration
 
@@ -461,6 +1184,333 @@ docker run -d \
 3. **Timeout Protection**: Network requests timeout after 30 seconds
 4. **Dependency Scanning**: Automated Trivy/Snyk scans on every build
 5. **No External Storage**: Everything in-memory, no persistent data
+
+## Troubleshooting
+
+### Common Errors
+
+#### 1. "400 Bad Request" - Invalid URL
+
+**Symptom**: Orange placeholder image with "400" text
+
+**Causes:**
+- Missing `url` parameter
+- Invalid URL format
+- URL not properly encoded
+
+**Solutions:**
+```bash
+# ❌ Wrong - missing URL parameter
+curl "http://localhost:8080/image"
+
+# ✅ Correct - URL parameter provided
+curl "http://localhost:8080/image?url=https://picsum.photos/800/600"
+
+# ❌ Wrong - URL not encoded (contains special characters)
+curl "http://localhost:8080/image?url=https://example.com/image?size=large"
+
+# ✅ Correct - URL properly encoded
+curl "http://localhost:8080/image?url=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("https://example.com/image?size=large", safe=""))')"
+```
+
+#### 2. "400 Bad Request" - Invalid Operation
+
+**Symptom**: Orange placeholder image with error message
+
+**Causes:**
+- Typo in operation name
+- Invalid operation syntax
+- Unsupported operation
+
+**Solutions:**
+```bash
+# ❌ Wrong - typo in operation
+curl "http://localhost:8080/image?url=https://picsum.photos/800/600&op=rotate-45"
+
+# ✅ Correct - valid rotation values
+curl "http://localhost:8080/image?url=https://picsum.photos/800/600&op=rotate-90"
+
+# ❌ Wrong - invalid resize format
+curl "http://localhost:8080/image?url=https://picsum.photos/800/600&op=resize-800"
+
+# ✅ Correct - resize format is WIDTHxHEIGHT
+curl "http://localhost:8080/image?url=https://picsum.photos/800/600&op=resize-800x600"
+```
+
+**Supported operations:**
+- `rotate-90`, `rotate-180`, `rotate-270`
+- `resize-WxH` (e.g., `resize-800x600`, `resize-1400x1400`)
+
+#### 3. "400 Bad Request" - Image Too Large
+
+**Symptom**: Orange placeholder with error message
+
+**Cause**: Source image exceeds 50MB limit
+
+**Solutions:**
+```bash
+# Option 1: Use a smaller source image
+curl "http://localhost:8080/image?url=https://example.com/smaller-image.jpg"
+
+# Option 2: Increase limit via environment variable (if you control the server)
+docker run -d -p 8080:8080 \
+  -e MAX_IMAGE_SIZE=104857600 \
+  ghcr.io/steviee/github-workflow-article:latest
+```
+
+#### 4. "500 Internal Server Error" - Cannot Fetch Image
+
+**Symptom**: Red placeholder image with "500" text
+
+**Causes:**
+- Source URL is unreachable
+- Network timeout
+- DNS resolution failure
+- SSL/TLS certificate errors
+
+**Solutions:**
+```bash
+# Verify URL is accessible
+curl -I https://example.com/image.jpg
+
+# Check DNS resolution
+nslookup example.com
+
+# Test with a known-good URL
+curl "http://localhost:8080/image?url=https://picsum.photos/800/600"
+```
+
+#### 5. Service Not Starting
+
+**Symptom**: Container exits immediately or "connection refused"
+
+**Debug steps:**
+```bash
+# Check container logs
+docker logs image-api
+
+# Check if port is already in use
+lsof -i :8080
+
+# Run in foreground to see errors
+docker run --rm -p 8080:8080 ghcr.io/steviee/github-workflow-article:latest
+
+# Check health endpoint
+curl http://localhost:8080/health
+```
+
+#### 6. High Memory Usage
+
+**Symptom**: Container using excessive RAM
+
+**Causes:**
+- Cache growing too large
+- Cache TTL too long
+- Processing very large images
+
+**Solutions:**
+```bash
+# Reduce cache TTL
+docker run -d -p 8080:8080 \
+  -e CACHE_TTL=2m \
+  -e CACHE_CLEANUP_INTERVAL=15s \
+  ghcr.io/steviee/github-workflow-article:latest
+
+# Set memory limit
+docker run -d -p 8080:8080 \
+  --memory=512m \
+  --memory-swap=512m \
+  ghcr.io/steviee/github-workflow-article:latest
+
+# Monitor cache size
+curl -s http://localhost:8080/metrics | grep image_cache_size
+```
+
+#### 7. Slow Response Times
+
+**Symptom**: Requests taking several seconds
+
+**Debug steps:**
+```bash
+# Check processing time metrics
+curl -s http://localhost:8080/metrics | grep image_processing_duration
+
+# Check fetch time metrics (slow network?)
+curl -s http://localhost:8080/metrics | grep image_fetch_duration
+
+# Test with local/fast image source
+curl "http://localhost:8080/image?url=https://picsum.photos/800/600&op=rotate-90"
+
+# Check cache hit rate
+curl -s http://localhost:8080/metrics | grep image_cache
+```
+
+**Solutions:**
+```bash
+# Increase cache TTL to improve hit rate
+docker run -d -p 8080:8080 \
+  -e CACHE_TTL=10m \
+  ghcr.io/steviee/github-workflow-article:latest
+
+# Allocate more CPU
+docker run -d -p 8080:8080 \
+  --cpus=2 \
+  ghcr.io/steviee/github-workflow-article:latest
+
+# Use faster image sources
+# Slow: Large images from slow servers
+# Fast: CDN-hosted images, smaller dimensions
+```
+
+#### 8. Cache Not Working
+
+**Symptom**: `X-Cache: SKIP` on all requests
+
+**Causes:**
+- No operations specified (cache only applies to processed images)
+- Cache disabled or not initialized
+
+**Verification:**
+```bash
+# ❌ No cache (no operations)
+curl -v "http://localhost:8080/image?url=https://picsum.photos/800/600" 2>&1 | grep X-Cache
+# Output: X-Cache: SKIP
+
+# ✅ Cache applies (with operations)
+curl -v "http://localhost:8080/image?url=https://picsum.photos/800/600&op=rotate-90" 2>&1 | grep X-Cache
+# First request: X-Cache: MISS
+# Second request: X-Cache: HIT
+```
+
+### Performance Tuning
+
+#### For High Throughput
+
+```bash
+docker run -d -p 8080:8080 \
+  --name image-api-high-perf \
+  --cpus=4 \
+  --memory=4g \
+  -e CACHE_TTL=15m \
+  -e MAX_IMAGE_SIZE=104857600 \
+  -e LOG_LEVEL=warn \
+  ghcr.io/steviee/github-workflow-article:latest
+```
+
+#### For Low Memory Environments
+
+```bash
+docker run -d -p 8080:8080 \
+  --name image-api-low-mem \
+  --cpus=1 \
+  --memory=256m \
+  --memory-swap=256m \
+  -e CACHE_TTL=1m \
+  -e CACHE_CLEANUP_INTERVAL=10s \
+  -e MAX_IMAGE_SIZE=26214400 \
+  -e LOG_LEVEL=error \
+  ghcr.io/steviee/github-workflow-article:latest
+```
+
+#### For Fast Cache Rotation
+
+```bash
+docker run -d -p 8080:8080 \
+  --name image-api-fast-rotation \
+  -e CACHE_TTL=2m \
+  -e CACHE_CLEANUP_INTERVAL=10s \
+  ghcr.io/steviee/github-workflow-article:latest
+```
+
+### Debug Mode
+
+Enable verbose logging for troubleshooting:
+
+```bash
+docker run -d -p 8080:8080 \
+  --name image-api-debug \
+  -e LOG_LEVEL=debug \
+  ghcr.io/steviee/github-workflow-article:latest
+
+# Watch logs in real-time
+docker logs -f image-api-debug
+```
+
+### Health Checks
+
+Verify service health:
+
+```bash
+# Basic health check
+curl http://localhost:8080/health
+# Expected: {"status":"healthy"}
+
+# Readiness check
+curl http://localhost:8080/ready
+# Expected: {"status":"ready"}
+
+# Test image processing end-to-end
+curl "http://localhost:8080/image?url=https://picsum.photos/100/100" -o test.png
+file test.png
+# Expected: test.png: PNG image data, 100 x 100, 8-bit/color RGBA, non-interlaced
+
+# Verify PNG format
+xxd test.png | head -n 1
+# Expected to start with: 89 50 4e 47 (PNG magic bytes)
+```
+
+### Common Integration Issues
+
+#### CORS Errors (Browser)
+
+**Symptom**: Browser console shows CORS policy error
+
+**Solution**: The API already enables CORS for all origins. If you're still seeing errors:
+
+```javascript
+// Ensure you're not sending credentials
+fetch('http://localhost:8080/image?url=https://picsum.photos/800/600', {
+  credentials: 'omit'  // Don't send cookies
+})
+```
+
+#### URL Encoding Issues
+
+**Problem**: URLs with query parameters or special characters fail
+
+**Solutions:**
+
+```bash
+# Bash - use Python
+IMAGE_URL="https://example.com/image.jpg?size=large&format=png"
+ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$IMAGE_URL', safe=''))")
+curl "http://localhost:8080/image?url=$ENCODED"
+
+# JavaScript
+const imageUrl = 'https://example.com/image.jpg?size=large';
+const encoded = encodeURIComponent(imageUrl);
+fetch(`http://localhost:8080/image?url=${encoded}`);
+
+# Python
+import urllib.parse
+image_url = 'https://example.com/image.jpg?size=large'
+encoded = urllib.parse.quote(image_url, safe='')
+requests.get(f'http://localhost:8080/image?url={encoded}')
+```
+
+### Getting Help
+
+If you encounter issues not covered here:
+
+1. **Check logs**: `docker logs <container-name>`
+2. **Check metrics**: `curl http://localhost:8080/metrics`
+3. **Enable debug logging**: Set `LOG_LEVEL=debug`
+4. **Test with known-good URLs**: Use `https://picsum.photos/800/600`
+5. **Open an issue**: [GitHub Issues](https://github.com/steviee/github-workflow-article/issues) with:
+   - Exact curl command used
+   - Error message or placeholder screenshot
+   - Relevant logs
+   - Environment details (Docker version, OS, etc.)
 
 ## Contributing
 
