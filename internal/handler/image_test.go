@@ -1,44 +1,16 @@
 package handler
 
 import (
-	"encoding/json"
+	"bytes"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-func TestImageHandler(t *testing.T) {
-	t.Parallel()
-
-	// Create a request to pass to the handler
-	req := httptest.NewRequest(http.MethodGet, "/image?url=https://example.com/image.jpg", nil)
-
-	// Create a ResponseRecorder to record the response
-	rr := httptest.NewRecorder()
-
-	// Call the handler
-	ImageHandler(rr, req)
-
-	// Check the status code - should be 501 Not Implemented
-	assert.Equal(t, http.StatusNotImplemented, rr.Code, "handler should return 501 Not Implemented")
-
-	// Check the content type
-	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"), "content type should be application/json")
-
-	// Check the response body
-	var response ImageErrorResponse
-	err := json.Unmarshal(rr.Body.Bytes(), &response)
-	require.NoError(t, err, "response should be valid JSON")
-
-	assert.NotEmpty(t, response.Error, "error field should not be empty")
-	assert.NotEmpty(t, response.Message, "message field should not be empty")
-	assert.Contains(t, response.Error, "not yet implemented", "error should mention not implemented")
-}
-
-func TestImageHandler_ErrorMessage(t *testing.T) {
+func TestImageHandler_MissingURL(t *testing.T) {
 	t.Parallel()
 
 	req := httptest.NewRequest(http.MethodGet, "/image", nil)
@@ -46,131 +18,262 @@ func TestImageHandler_ErrorMessage(t *testing.T) {
 
 	ImageHandler(rr, req)
 
-	var response ImageErrorResponse
-	err := json.Unmarshal(rr.Body.Bytes(), &response)
-	require.NoError(t, err)
+	// Should return 400 Bad Request with placeholder
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.Equal(t, "image/png", rr.Header().Get("Content-Type"))
+	assert.Equal(t, "true", rr.Header().Get("X-Placeholder"))
 
-	// Verify error message content
-	assert.Equal(t, "Image processing not yet implemented", response.Error)
-	assert.Equal(t, "Coming soon in Issue #6-#10", response.Message)
+	// Verify it's a valid PNG
+	img, err := png.Decode(bytes.NewReader(rr.Body.Bytes()))
+	assert.NoError(t, err)
+	assert.NotNil(t, img)
+}
+
+func TestImageHandler_WithValidImage(t *testing.T) {
+	t.Parallel()
+
+	// Create a test server that serves a fake image
+	imageData := []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(imageData)
+	}))
+	defer testServer.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/image?url="+testServer.URL, nil)
+	rr := httptest.NewRecorder()
+
+	ImageHandler(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, "image/png", rr.Header().Get("Content-Type"))
+	assert.Equal(t, testServer.URL, rr.Header().Get("X-Original-URL"))
+	assert.Equal(t, imageData, rr.Body.Bytes())
+}
+
+func TestImageHandler_WithInvalidURL(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name string
+		url  string
+	}{
+		{"non-existent domain", "http://this-domain-definitely-does-not-exist-12345.com/image.png"},
+		{"invalid scheme", "ftp://example.com/image.png"},
+		{"malformed URL", "http://[::1]:namedport"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(http.MethodGet, "/image?url="+tc.url, nil)
+			rr := httptest.NewRecorder()
+
+			ImageHandler(rr, req)
+
+			// Should return 502 Bad Gateway with placeholder
+			assert.Equal(t, http.StatusBadGateway, rr.Code)
+			assert.Equal(t, "image/png", rr.Header().Get("Content-Type"))
+			assert.Equal(t, "true", rr.Header().Get("X-Placeholder"))
+
+			// Verify it's a valid PNG
+			img, err := png.Decode(bytes.NewReader(rr.Body.Bytes()))
+			assert.NoError(t, err)
+			assert.NotNil(t, img)
+		})
+	}
+}
+
+func TestImageHandler_WithHTTPError(t *testing.T) {
+	t.Parallel()
+
+	// Create a test server that returns 404
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer testServer.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/image?url="+testServer.URL, nil)
+	rr := httptest.NewRecorder()
+
+	ImageHandler(rr, req)
+
+	// Should return 502 Bad Gateway with placeholder
+	assert.Equal(t, http.StatusBadGateway, rr.Code)
+	assert.Equal(t, "image/png", rr.Header().Get("Content-Type"))
+	assert.Equal(t, "true", rr.Header().Get("X-Placeholder"))
+
+	// Verify it's a valid PNG placeholder
+	img, err := png.Decode(bytes.NewReader(rr.Body.Bytes()))
+	assert.NoError(t, err)
+	assert.NotNil(t, img)
+}
+
+func TestImageHandler_WithNonImageContent(t *testing.T) {
+	t.Parallel()
+
+	// Create a test server that returns HTML instead of image
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("<html>Not an image</html>"))
+	}))
+	defer testServer.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/image?url="+testServer.URL, nil)
+	rr := httptest.NewRecorder()
+
+	ImageHandler(rr, req)
+
+	// Should return 502 with placeholder (invalid content type)
+	assert.Equal(t, http.StatusBadGateway, rr.Code)
+	assert.Equal(t, "image/png", rr.Header().Get("Content-Type"))
+	assert.Equal(t, "true", rr.Header().Get("X-Placeholder"))
+
+	// Verify it's a valid PNG placeholder
+	img, err := png.Decode(bytes.NewReader(rr.Body.Bytes()))
+	assert.NoError(t, err)
+	assert.NotNil(t, img)
+}
+
+func TestImageHandler_WithCustomDimensions(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "/image?url=invalid&width=300&height=200", nil)
+	rr := httptest.NewRecorder()
+
+	ImageHandler(rr, req)
+
+	// Should return placeholder with requested dimensions
+	assert.Equal(t, http.StatusBadGateway, rr.Code)
+	assert.Equal(t, "image/png", rr.Header().Get("Content-Type"))
+
+	// Decode and check dimensions
+	img, err := png.Decode(bytes.NewReader(rr.Body.Bytes()))
+	assert.NoError(t, err)
+
+	bounds := img.Bounds()
+	assert.Equal(t, 300, bounds.Dx(), "width should be 300")
+	assert.Equal(t, 200, bounds.Dy(), "height should be 200")
+}
+
+func TestImageHandler_WithDifferentImageTypes(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name        string
+		contentType string
+		data        []byte
+	}{
+		{"JPEG", "image/jpeg", []byte("\xFF\xD8\xFF\xE0")},
+		{"GIF", "image/gif", []byte("GIF89a")},
+		{"WebP", "image/webp", []byte("RIFF")},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Create test server with specific image type
+			testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", tc.contentType)
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write(tc.data)
+			}))
+			defer testServer.Close()
+
+			req := httptest.NewRequest(http.MethodGet, "/image?url="+testServer.URL, nil)
+			rr := httptest.NewRecorder()
+
+			ImageHandler(rr, req)
+
+			assert.Equal(t, http.StatusOK, rr.Code)
+			assert.Equal(t, tc.contentType, rr.Header().Get("Content-Type"))
+			assert.Equal(t, tc.data, rr.Body.Bytes())
+		})
+	}
 }
 
 func TestImageHandler_MultipleRequests(t *testing.T) {
 	t.Parallel()
 
-	// Test that multiple requests all return the same result
+	// Create test server
+	imageData := []byte("test-image-data")
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(imageData)
+	}))
+	defer testServer.Close()
+
+	// Make multiple requests
 	for i := 0; i < 5; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/image", nil)
+		req := httptest.NewRequest(http.MethodGet, "/image?url="+testServer.URL, nil)
 		rr := httptest.NewRecorder()
 
 		ImageHandler(rr, req)
 
-		assert.Equal(t, http.StatusNotImplemented, rr.Code)
-
-		var response ImageErrorResponse
-		err := json.Unmarshal(rr.Body.Bytes(), &response)
-		require.NoError(t, err)
-		assert.NotEmpty(t, response.Error)
-		assert.NotEmpty(t, response.Message)
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, "image/png", rr.Header().Get("Content-Type"))
+		assert.Equal(t, imageData, rr.Body.Bytes())
 	}
 }
 
-func TestImageHandler_DifferentMethods(t *testing.T) {
+func TestImageHandler_ImageTooLarge(t *testing.T) {
 	t.Parallel()
 
-	// Image handler should work with any HTTP method (it doesn't check)
-	methods := []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete}
+	// Create test server that returns image larger than 50MB
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Content-Length", "52428801") // 50MB + 1 byte
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer testServer.Close()
 
-	for _, method := range methods {
-		t.Run(method, func(t *testing.T) {
-			t.Parallel()
-
-			req := httptest.NewRequest(method, "/image", nil)
-			rr := httptest.NewRecorder()
-
-			ImageHandler(rr, req)
-
-			assert.Equal(t, http.StatusNotImplemented, rr.Code)
-
-			var response ImageErrorResponse
-			err := json.Unmarshal(rr.Body.Bytes(), &response)
-			require.NoError(t, err)
-			assert.NotEmpty(t, response.Error)
-		})
-	}
-}
-
-func TestImageHandler_WithQueryParams(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name  string
-		query string
-	}{
-		{
-			name:  "with url parameter",
-			query: "?url=https://example.com/image.jpg",
-		},
-		{
-			name:  "with url and operations",
-			query: "?url=https://example.com/image.jpg&operations=rotate-90,resize-200x200",
-		},
-		{
-			name:  "with multiple parameters",
-			query: "?url=https://example.com/image.jpg&operations=rotate-90&format=jpg",
-		},
-		{
-			name:  "no parameters",
-			query: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			req := httptest.NewRequest(http.MethodGet, "/image"+tt.query, nil)
-			rr := httptest.NewRecorder()
-
-			ImageHandler(rr, req)
-
-			// All should return 501 regardless of parameters
-			assert.Equal(t, http.StatusNotImplemented, rr.Code)
-
-			var response ImageErrorResponse
-			err := json.Unmarshal(rr.Body.Bytes(), &response)
-			require.NoError(t, err)
-			assert.NotEmpty(t, response.Error)
-		})
-	}
-}
-
-func TestImageHandler_JSONFormat(t *testing.T) {
-	t.Parallel()
-
-	req := httptest.NewRequest(http.MethodGet, "/image", nil)
+	req := httptest.NewRequest(http.MethodGet, "/image?url="+testServer.URL, nil)
 	rr := httptest.NewRecorder()
 
 	ImageHandler(rr, req)
 
-	// Verify the response is valid JSON with correct structure
-	var response ImageErrorResponse
-	err := json.Unmarshal(rr.Body.Bytes(), &response)
-	require.NoError(t, err, "response should be valid JSON")
+	// Should return 502 with placeholder (size exceeded)
+	assert.Equal(t, http.StatusBadGateway, rr.Code)
+	assert.Equal(t, "image/png", rr.Header().Get("Content-Type"))
+	assert.Equal(t, "true", rr.Header().Get("X-Placeholder"))
+}
 
-	// Verify fields are present and non-empty
-	assert.NotEmpty(t, response.Error, "error field should be present")
-	assert.NotEmpty(t, response.Message, "message field should be present")
+func TestSendPlaceholder(t *testing.T) {
+	t.Parallel()
 
-	// Re-marshal to verify structure
-	jsonBytes, err := json.Marshal(response)
-	require.NoError(t, err)
+	testCases := []struct {
+		name       string
+		statusCode int
+		width      int
+		height     int
+	}{
+		{"400 with default dimensions", 400, 0, 0},
+		{"404 with custom dimensions", 404, 200, 150},
+		{"500 with large dimensions", 500, 800, 600},
+		{"502 with small dimensions", 502, 50, 50},
+	}
 
-	// Should be able to unmarshal back
-	var response2 ImageErrorResponse
-	err = json.Unmarshal(jsonBytes, &response2)
-	require.NoError(t, err)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	assert.Equal(t, response.Error, response2.Error)
-	assert.Equal(t, response.Message, response2.Message)
+			rr := httptest.NewRecorder()
+			sendPlaceholder(rr, tc.statusCode, tc.width, tc.height)
+
+			assert.Equal(t, tc.statusCode, rr.Code)
+			assert.Equal(t, "image/png", rr.Header().Get("Content-Type"))
+			assert.Equal(t, "true", rr.Header().Get("X-Placeholder"))
+			assert.Greater(t, len(rr.Body.Bytes()), 0)
+
+			// Verify it's a valid PNG
+			img, err := png.Decode(bytes.NewReader(rr.Body.Bytes()))
+			assert.NoError(t, err)
+			assert.NotNil(t, img)
+		})
+	}
 }

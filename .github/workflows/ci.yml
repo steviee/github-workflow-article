@@ -16,7 +16,7 @@ concurrency:
 
 # Environment variables shared across jobs
 env:
-  GO_VERSION: '1.23.x'  # Using 1.23 until golangci-lint supports 1.25
+  GO_VERSION: '1.24.x'  # Using 1.24 for golang.org/x/image compatibility
   COVERAGE_THRESHOLD: 85
 
 jobs:
@@ -106,9 +106,9 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
-          version: v1.62  # Use v1.62 with Go 1.23 support
+          version: v2.1.6  # Use v2.x for Go 1.24 support and v2 config schema
           args: --timeout=5m --config=.golangci.yml
           skip-cache: false
 

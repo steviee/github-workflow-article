@@ -1,300 +1,35 @@
 # golangci-lint configuration
 # Reference: https://golangci-lint.run/usage/configuration/
 
-run:
-  # Timeout for analysis
-  timeout: 5m
+# Configuration file version (required for v2.x)
+version: '2'
 
-  # Include test files
+run:
+  timeout: 5m
   tests: true
 
-# Output configuration
-output:
-  # Output formats: use colored line numbers
-  formats:
-    - format: colored-line-number
-      path: stdout
-
-  # Print lines of code with issue
-  print-issued-lines: true
-
-  # Print linter name in the end of issue text
-  print-linter-name: true
-
-  # Make issues output unique by line
-  uniq-by-line: true
-
-  # Sort results by file, line, and column
-  sort-results: true
-
-# Linters configuration
 linters:
-  # Disable all linters by default
-  disable-all: true
-
-  # Enable specific linters
   enable:
-    # Enabled by default
-    - errcheck      # Check for unchecked errors
-    - gosimple      # Simplify code
-    - govet         # Vet examines Go source code
-    - ineffassign   # Detect ineffectual assignments
-    - staticcheck   # Go static analysis
-    - unused        # Check for unused constants, variables, functions and types
-
-    # Additional recommended linters
-    - gofmt         # Check whether code was gofmt-ed
-    - goimports     # Check import statements are formatted according to goimport
-    - misspell      # Finds commonly misspelled English words
-    - revive        # Fast, configurable, extensible, flexible linter
-    - goconst       # Find repeated strings that could be replaced by a constant
-    - gocyclo       # Compute cyclomatic complexity
-
-    # Error handling
-    - errchkjson    # Check for json encoding errors
-    - errorlint     # Find code that will cause problems with error wrapping
-
-    # Performance
-    - prealloc      # Find slice declarations that could potentially be pre-allocated
-
-    # Style
-    - stylecheck    # Replacement for golint
-    - whitespace    # Detection of leading and trailing whitespace
-
-    # Security
-    - gosec         # Security problems
-
-    # Bugs
-    - bodyclose     # Check whether HTTP response body is closed successfully
-    - nilerr        # Find code that returns nil even if it checks that error is not nil
-    - nilnil        # Check that there is no simultaneous return of nil error and nil value
-
-    # Complexity
-    - gocognit      # Compute cognitive complexity
-    - nestif        # Report deeply nested if statements
-
-    # Concurrency
-    - gocritic      # Provides diagnostics that check for bugs, performance, and style issues
-
-    # Code quality
-    - unconvert     # Remove unnecessary type conversions
-    - unparam       # Report unused function parameters
-    - wastedassign  # Find wasted assignment statements
-
-linters-settings:
-  # errcheck configuration
-  errcheck:
-    # Report about not checking of errors in type assertions: `a := b.(MyStruct)`
-    check-type-assertions: true
-
-    # Report about assignment of errors to blank identifier: `num, _ := strconv.Atoi(numStr)`
-    check-blank: false
-
-    # List of functions to exclude from checking
-    exclude-functions:
-      - io/ioutil.ReadFile
-      - io.Copy(*bytes.Buffer)
-      - io.Copy(os.Stdout)
-
-  # govet configuration
-  govet:
-    # Enable all analyzers
-    enable-all: true
-    # Disable specific analyzers
-    disable:
-      - shadow  # Can be too strict
-
-  # gocyclo configuration
-  gocyclo:
-    # Minimal cyclomatic complexity to report
-    min-complexity: 15
-
-  # gocognit configuration
-  gocognit:
-    # Minimal cognitive complexity to report
-    min-complexity: 20
-
-  # goconst configuration
-  goconst:
-    # Minimal length of string constant
-    min-len: 3
-    # Minimum occurrences of constant string count to trigger issue
-    min-occurrences: 3
-    # Ignore test files
-    ignore-tests: true
-
-  # misspell configuration
-  misspell:
-    # Locale for spell checking
-    locale: US
-
-  # revive configuration
-  revive:
-    # Maximum number of open files at the same time
-    max-open-files: 2048
-    # When set to false, ignores files with "GENERATED" header
-    ignore-generated-header: true
-    # Sets the default severity
-    severity: warning
-    # Enable all available rules
-    enable-all-rules: false
-    # Specific rules to enable
-    rules:
-      - name: blank-imports
-      - name: context-as-argument
-      - name: context-keys-type
-      - name: dot-imports
-      - name: error-return
-      - name: error-strings
-      - name: error-naming
-      - name: exported
-      - name: if-return
-      - name: increment-decrement
-      - name: var-naming
-      - name: var-declaration
-      - name: package-comments
-      - name: range
-      - name: receiver-naming
-      - name: time-naming
-      - name: unexported-return
-      - name: indent-error-flow
-      - name: errorf
-      - name: empty-block
-      - name: superfluous-else
-      - name: unused-parameter
-      - name: unreachable-code
-      - name: redefines-builtin-id
-
-  # gosec configuration
-  gosec:
-    # Severity level for issues
-    severity: medium
-    # Confidence level for issues
-    confidence: medium
-    # Exclude generated files
-    excludes:
-      - G104  # Audit errors not checked (duplicates errcheck)
-
-  # stylecheck configuration
-  stylecheck:
-    # Enable all checks
-    checks: ["all"]
-    # Disable specific checks
-    dot-import-whitelist: []
-    initialisms: ["ACL", "API", "ASCII", "CPU", "CSS", "DNS", "EOF", "GUID", "HTML", "HTTP", "HTTPS", "ID", "IP", "JSON", "LHS", "QPS", "RAM", "RHS", "RPC", "SLA", "SMTP", "SQL", "SSH", "TCP", "TLS", "TTL", "UDP", "UI", "UID", "UUID", "URI", "URL", "UTF8", "VM", "XML", "XMPP", "XSRF", "XSS", "PNG", "JPG", "JPEG"]
-
-  # prealloc configuration
-  prealloc:
-    # Report pre-allocation suggestions only on simple loops that have no returns/breaks/continues/gotos in them
-    simple: true
-    range-loops: true
-    for-loops: false
-
-  # gocritic configuration
-  gocritic:
-    # Enable multiple checks by tags
-    enabled-tags:
-      - diagnostic
-      - performance
-      - style
-    disabled-checks:
-      - commentFormatting  # Can be too strict
-      - whyNoLint         # Can be noisy
-    settings:
-      hugeParam:
-        sizeThreshold: 256
-      rangeValCopy:
-        sizeThreshold: 512
-
-# Issues configuration
-issues:
-  # Maximum issues count per one linter
-  max-issues-per-linter: 0
-
-  # Maximum count of issues with the same text
-  max-same-issues: 0
-
-  # Show only new issues
-  new: false
-
-  # Which dirs to exclude
-  exclude-dirs:
-    - bin
-    - vendor
-    - var
-    - tmp
-
-  # Which files to exclude
-  exclude-files:
-    - ".*\\.pb\\.go$"
-    - ".*\\.gen\\.go$"
-
-  # Exclude specific issues
-  exclude-rules:
-    # Exclude some linters from running on tests files
-    - path: _test\.go
-      linters:
-        - gocyclo
-        - errcheck
-        - dupl
-        - gosec
-        - goconst
-        - gocognit
-        - revive         # Allow unused parameters in test handlers
-        - gocritic       # Allow nil request bodies in tests
-        - govet          # Allow non-optimal field alignment in test structs
-
-    # Exclude some staticcheck messages
-    - linters:
-        - staticcheck
-      text: "SA1019:"  # Ignore deprecation warnings for now
-
-    # Exclude lll issues for long lines with go:generate
-    - linters:
-        - lll
-      source: "^//go:generate "
-
-    # Ignore magic number warnings in tests
-    - path: _test\.go
-      linters:
-        - gomnd
-        - mnd
-
-    # Exclude shadow checking on err variables
-    - linters:
-        - govet
-      text: 'shadow: declaration of "err"'
-
-    # Allow main and init functions to have high cyclomatic complexity
-    - path: cmd/
-      linters:
-        - gocyclo
-        - gocognit
-      text: "of func `(main|init)`"
-
-    # Allow os.Exit in main (exitAfterDefer is acceptable in cmd/main.go)
-    - path: cmd/api/main\.go
-      linters:
-        - gocritic
-      text: "exitAfterDefer"
-
-    # Allow non-optimal field alignment in config structs for clarity
-    - path: internal/config/config\.go
-      linters:
-        - govet
-      text: "fieldalignment"
-
-  # Independently of option `exclude` we use default exclude patterns
-  exclude-use-default: false
-
-# Severity configuration
-severity:
-  # Default value is empty string
-  default-severity: error
-
-  # Rules for severity
-  rules:
-    - linters:
-        - revive
-        - stylecheck
-      severity: warning
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+    - revive
+    - goconst
+    - gocyclo
+    - errchkjson
+    - errorlint
+    - prealloc
+    - whitespace
+    - gosec
+    - bodyclose
+    - nilerr
+    - nilnil
+    - gocognit
+    - nestif
+    - gocritic
+    - unconvert
+    - unparam
+    - wastedassign

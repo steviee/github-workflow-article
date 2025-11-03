@@ -23,9 +23,9 @@ func TestRequestLogger(t *testing.T) {
 	logger.SetFormatter(&logrus.JSONFormatter{})
 
 	// Create a test handler
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	// Wrap with RequestLogger middleware
@@ -100,7 +100,7 @@ func TestRequestLogger_DifferentStatusCodes(t *testing.T) {
 			logger.SetOutput(&buf)
 			logger.SetFormatter(&logrus.JSONFormatter{})
 
-			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tt.statusCode)
 			})
 
@@ -205,7 +205,7 @@ func TestRequestLogger_DifferentMethods(t *testing.T) {
 			logger.SetOutput(&buf)
 			logger.SetFormatter(&logrus.JSONFormatter{})
 
-			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			})
 
@@ -245,7 +245,7 @@ func TestRequestLogger_DifferentPaths(t *testing.T) {
 			logger.SetOutput(&buf)
 			logger.SetFormatter(&logrus.JSONFormatter{})
 
-			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			})
 
@@ -271,7 +271,7 @@ func TestRequestLogger_DurationTracking(t *testing.T) {
 	logger.SetOutput(&buf)
 	logger.SetFormatter(&logrus.JSONFormatter{})
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		// Simulate some work (but keep it fast for tests)
 		w.WriteHeader(http.StatusOK)
 	})
@@ -300,8 +300,8 @@ func TestRequestLogger_WriteWithoutExplicitHeader(t *testing.T) {
 	logger.SetFormatter(&logrus.JSONFormatter{})
 
 	// Handler that writes without calling WriteHeader explicitly
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("OK")) // This should implicitly set status to 200
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("OK")) // This should implicitly set status to 200
 	})
 
 	middleware := RequestLogger(logger)
@@ -327,11 +327,11 @@ func TestRequestLogger_MultipleWrites(t *testing.T) {
 	logger.SetFormatter(&logrus.JSONFormatter{})
 
 	// Handler that writes multiple times
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Part 1"))
-		w.Write([]byte("Part 2"))
-		w.Write([]byte("Part 3"))
+		_, _ = w.Write([]byte("Part 1"))
+		_, _ = w.Write([]byte("Part 2"))
+		_, _ = w.Write([]byte("Part 3"))
 	})
 
 	middleware := RequestLogger(logger)
@@ -355,7 +355,7 @@ func TestRequestLogger_UniqueRequestIDs(t *testing.T) {
 	logger := logrus.New()
 	logger.SetOutput(bytes.NewBuffer(nil)) // Discard logs
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 

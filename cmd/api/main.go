@@ -92,14 +92,15 @@ func main() {
 	sig := <-sigChan
 	logger.WithField("signal", sig.String()).Info("Shutdown signal received")
 
-	// Create shutdown context with timeout
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer shutdownCancel()
-
 	// Attempt graceful shutdown
 	logger.Info("Initiating graceful shutdown...")
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		logger.WithError(err).Error("Error during shutdown")
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownErr := server.Shutdown(shutdownCtx)
+	shutdownCancel()
+
+	if shutdownErr != nil {
+		logger.WithError(shutdownErr).Error("Error during shutdown")
+		logger.Error("Forced shutdown due to error")
 		os.Exit(1)
 	}
 
