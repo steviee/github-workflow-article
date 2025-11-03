@@ -144,12 +144,12 @@ func TestResize_MaxDimensionEnforcement(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name          string
-		inputWidth    int
-		inputHeight   int
-		requestWidth  int
-		requestHeight int
-		expectedWidth int
+		name           string
+		inputWidth     int
+		inputHeight    int
+		requestWidth   int
+		requestHeight  int
+		expectedWidth  int
 		expectedHeight int
 	}{
 		{
