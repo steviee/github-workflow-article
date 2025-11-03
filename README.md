@@ -234,8 +234,36 @@ Placeholders respect requested dimensions (or default to 400x300).
 
 #### 1. Pull the Image
 
+The image is available on GitHub Container Registry with multi-architecture support:
+
 ```bash
+# Pull latest version (recommended)
 docker pull ghcr.io/steviee/github-workflow-article:latest
+
+# Pull specific version
+docker pull ghcr.io/steviee/github-workflow-article:v1.0.0
+
+# Pull specific minor version (gets latest patch)
+docker pull ghcr.io/steviee/github-workflow-article:v1.0
+
+# Pull specific major version (gets latest minor.patch)
+docker pull ghcr.io/steviee/github-workflow-article:v1
+```
+
+**Multi-Architecture Support:**
+
+The image supports multiple architectures and Docker will automatically pull the correct one:
+- `linux/amd64` (x86_64) - Standard Intel/AMD servers
+- `linux/arm64` (aarch64) - ARM64 servers, AWS Graviton, Apple Silicon
+
+```bash
+# Verify image architecture
+docker image inspect ghcr.io/steviee/github-workflow-article:latest \
+  | grep Architecture
+
+# Explicitly pull for specific platform (if needed)
+docker pull --platform linux/amd64 ghcr.io/steviee/github-workflow-article:latest
+docker pull --platform linux/arm64 ghcr.io/steviee/github-workflow-article:latest
 ```
 
 #### 2. Run the Container
@@ -268,11 +296,37 @@ docker run -d \
 #### 3. Verify Deployment
 
 ```bash
-# Check health
-curl http://localhost:8080/health
+# 1. Check container is running
+docker ps | grep image-api
 
-# Test image processing
-curl "http://localhost:8080/image?url=https://picsum.photos/800/600&op=rotate-90" -o test.png
+# 2. Check container logs
+docker logs image-api
+
+# 3. Health check
+curl http://localhost:8080/health
+# Expected: {"status":"healthy"}
+
+# 4. Readiness check
+curl http://localhost:8080/ready
+# Expected: {"status":"ready"}
+
+# 5. Test basic image fetch
+curl "http://localhost:8080/image?url=https://picsum.photos/400/300" -o test-basic.png
+file test-basic.png
+# Expected: test-basic.png: PNG image data, 400 x 300, 8-bit/color RGBA
+
+# 6. Test image processing (rotation)
+curl "http://localhost:8080/image?url=https://picsum.photos/800/600&op=rotate-90" -o test-rotated.png
+
+# 7. Test cache (second request should be faster)
+time curl "http://localhost:8080/image?url=https://picsum.photos/800/600&op=rotate-90" -o /dev/null
+time curl "http://localhost:8080/image?url=https://picsum.photos/800/600&op=rotate-90" -o /dev/null
+
+# 8. Verify metrics are exposed
+curl -s http://localhost:8080/metrics | grep http_requests_total
+
+# 9. Check cache hit/miss headers
+curl -v "http://localhost:8080/image?url=https://picsum.photos/800/600&op=rotate-90" 2>&1 | grep X-Cache
 ```
 
 ### Environment Variables
@@ -293,6 +347,479 @@ curl "http://localhost:8080/image?url=https://picsum.photos/800/600&op=rotate-90
 | Small           | 0.5    | 512MB  | ~10                     |
 | Medium          | 1.0    | 1GB    | ~50                     |
 | Large           | 2.0    | 2GB    | ~100                    |
+
+### Docker Compose Deployment
+
+#### Basic Docker Compose
+
+Create `docker-compose.yml`:
+
+```yaml
+version: '3.8'
+
+services:
+  image-api:
+    image: ghcr.io/steviee/github-workflow-article:latest
+    container_name: image-api
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - CACHE_TTL=5m
+      - MAX_IMAGE_SIZE=52428800
+      - MAX_OUTPUT_DIMENSION=1400
+      - LOG_LEVEL=info
+      - CACHE_CLEANUP_INTERVAL=30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+```
+
+#### Using Environment File
+
+Create `.env` file:
+
+```bash
+# .env
+# Server Configuration
+PORT=8080
+LOG_LEVEL=info
+
+# Cache Configuration
+CACHE_TTL=5m
+CACHE_CLEANUP_INTERVAL=30s
+
+# Image Processing Limits
+MAX_IMAGE_SIZE=52428800
+MAX_OUTPUT_DIMENSION=1400
+```
+
+Create `docker-compose.yml`:
+
+```yaml
+version: '3.8'
+
+services:
+  image-api:
+    image: ghcr.io/steviee/github-workflow-article:latest
+    container_name: image-api
+    ports:
+      - "${PORT:-8080}:${PORT:-8080}"
+    env_file:
+      - .env
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:${PORT:-8080}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+```
+
+**Run with Docker Compose:**
+
+```bash
+# Start services
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Check status
+docker compose ps
+
+# Stop services
+docker compose down
+
+# Stop and remove volumes (if any)
+docker compose down -v
+```
+
+#### Multi-Service Setup with Monitoring
+
+Create `docker-compose.monitoring.yml`:
+
+```yaml
+version: '3.8'
+
+services:
+  image-api:
+    image: ghcr.io/steviee/github-workflow-article:latest
+    container_name: image-api
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - CACHE_TTL=5m
+      - LOG_LEVEL=info
+    restart: unless-stopped
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+    restart: unless-stopped
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:
+```
+
+Create `prometheus.yml`:
+
+```yaml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'image-api'
+    static_configs:
+      - targets: ['image-api:8080']
+    scrape_interval: 15s
+    scrape_timeout: 10s
+```
+
+**Run multi-service stack:**
+
+```bash
+# Start all services
+docker compose -f docker-compose.monitoring.yml up -d
+
+# Access services:
+# - Image API: http://localhost:8080
+# - Prometheus: http://localhost:9090
+# - Grafana: http://localhost:3000 (admin/admin)
+```
+
+### Production Best Practices
+
+#### Scaling Strategies
+
+**Horizontal Scaling with Docker Swarm:**
+
+```bash
+# Initialize swarm
+docker swarm init
+
+# Deploy stack with replicas
+docker service create \
+  --name image-api \
+  --replicas 3 \
+  --publish 8080:8080 \
+  --env CACHE_TTL=5m \
+  --limit-cpu 2 \
+  --limit-memory 1g \
+  ghcr.io/steviee/github-workflow-article:latest
+
+# Scale up/down
+docker service scale image-api=5
+
+# Check service status
+docker service ps image-api
+```
+
+**Horizontal Scaling with Kubernetes:**
+
+```yaml
+# k8s-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: image-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: image-api
+  template:
+    metadata:
+      labels:
+        app: image-api
+    spec:
+      containers:
+      - name: image-api
+        image: ghcr.io/steviee/github-workflow-article:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: CACHE_TTL
+          value: "5m"
+        - name: LOG_LEVEL
+          value: "info"
+        resources:
+          limits:
+            cpu: "2"
+            memory: "1Gi"
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: image-api
+spec:
+  selector:
+    app: image-api
+  ports:
+  - port: 80
+    targetPort: 8080
+  type: LoadBalancer
+```
+
+**Load Balancing with Nginx:**
+
+Create `nginx.conf`:
+
+```nginx
+upstream image_api {
+    least_conn;
+    server localhost:8081;
+    server localhost:8082;
+    server localhost:8083;
+}
+
+server {
+    listen 80;
+    server_name api.example.com;
+
+    location / {
+        proxy_pass http://image_api;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_http_version 1.1;
+        proxy_read_timeout 90s;
+    }
+
+    location /health {
+        access_log off;
+        proxy_pass http://image_api;
+    }
+}
+```
+
+Run multiple instances:
+
+```bash
+docker run -d -p 8081:8080 --name image-api-1 ghcr.io/steviee/github-workflow-article:latest
+docker run -d -p 8082:8080 --name image-api-2 ghcr.io/steviee/github-workflow-article:latest
+docker run -d -p 8083:8080 --name image-api-3 ghcr.io/steviee/github-workflow-article:latest
+
+# Run Nginx
+docker run -d -p 80:80 -v $(pwd)/nginx.conf:/etc/nginx/nginx.conf:ro nginx:alpine
+```
+
+#### Monitoring Integration
+
+**Centralized Logging with Syslog:**
+
+```bash
+docker run -d \
+  -p 8080:8080 \
+  --name image-api \
+  --log-driver=syslog \
+  --log-opt syslog-address=udp://logs.example.com:514 \
+  --log-opt tag="image-api" \
+  ghcr.io/steviee/github-workflow-article:latest
+```
+
+**JSON Logging for Aggregation:**
+
+```bash
+docker run -d \
+  -p 8080:8080 \
+  --name image-api \
+  --log-driver=json-file \
+  --log-opt max-size=10m \
+  --log-opt max-file=3 \
+  ghcr.io/steviee/github-workflow-article:latest
+```
+
+**Integration with ELK Stack:**
+
+```yaml
+# docker-compose.elk.yml
+version: '3.8'
+
+services:
+  image-api:
+    image: ghcr.io/steviee/github-workflow-article:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "co.elastic.logs/enabled=true"
+      - "co.elastic.logs/json.keys_under_root=true"
+```
+
+#### Security Hardening
+
+```bash
+# Run as non-root user (image already configured)
+# Read-only root filesystem
+# Drop all capabilities except necessary ones
+docker run -d \
+  -p 8080:8080 \
+  --name image-api \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=100m \
+  --security-opt=no-new-privileges:true \
+  --cap-drop=ALL \
+  --cap-add=NET_BIND_SERVICE \
+  ghcr.io/steviee/github-workflow-article:latest
+```
+
+#### Health Monitoring
+
+**Docker Health Checks:**
+
+```bash
+docker run -d \
+  -p 8080:8080 \
+  --name image-api \
+  --health-cmd="wget --quiet --tries=1 --spider http://localhost:8080/health || exit 1" \
+  --health-interval=30s \
+  --health-timeout=10s \
+  --health-retries=3 \
+  --health-start-period=40s \
+  ghcr.io/steviee/github-workflow-article:latest
+
+# Check health status
+docker inspect --format='{{.State.Health.Status}}' image-api
+```
+
+**Automated Restarts on Unhealthy:**
+
+```yaml
+# docker-compose.yml with auto-restart
+version: '3.8'
+
+services:
+  image-api:
+    image: ghcr.io/steviee/github-workflow-article:latest
+    restart: on-failure:3
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+```
+
+#### Backup and Disaster Recovery
+
+Since the service is stateless (all data in-memory cache):
+
+**No backup required** - Service can be restarted anytime without data loss
+
+**Recovery Procedure:**
+
+```bash
+# 1. Pull latest image
+docker pull ghcr.io/steviee/github-workflow-article:latest
+
+# 2. Stop old container
+docker stop image-api
+
+# 3. Remove old container
+docker rm image-api
+
+# 4. Start new container
+docker run -d -p 8080:8080 --name image-api ghcr.io/steviee/github-workflow-article:latest
+
+# 5. Verify health
+curl http://localhost:8080/health
+```
+
+**Zero-Downtime Updates:**
+
+```bash
+# Run new version on different port
+docker run -d -p 8081:8080 --name image-api-new ghcr.io/steviee/github-workflow-article:latest
+
+# Verify new version
+curl http://localhost:8081/health
+
+# Update load balancer to point to new instance
+# (or use Docker Swarm/Kubernetes rolling updates)
+
+# Stop old version
+docker stop image-api
+docker rm image-api
+
+# Rename new version
+docker rename image-api-new image-api
+```
 
 ## Development
 
