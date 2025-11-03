@@ -8,22 +8,12 @@ run:
   # Include test files
   tests: true
 
-  # Which dirs to skip
-  skip-dirs:
-    - bin
-    - vendor
-    - var
-    - tmp
-
-  # Which files to skip
-  skip-files:
-    - ".*\\.pb\\.go$"
-    - ".*\\.gen\\.go$"
-
 # Output configuration
 output:
-  # Output format: use colored line numbers
-  format: colored-line-number
+  # Output formats: use colored line numbers
+  formats:
+    - format: colored-line-number
+      path: stdout
 
   # Print lines of code with issue
   print-issued-lines: true
@@ -226,6 +216,18 @@ issues:
 
   # Show only new issues
   new: false
+
+  # Which dirs to exclude
+  exclude-dirs:
+    - bin
+    - vendor
+    - var
+    - tmp
+
+  # Which files to exclude
+  exclude-files:
+    - ".*\\.pb\\.go$"
+    - ".*\\.gen\\.go$"
 
   # Exclude specific issues
   exclude-rules:
