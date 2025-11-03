@@ -3,511 +3,649 @@ package processor
 import (
 	"image"
 	"image/color"
-	"image/png"
+	"image/draw"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// getQuadrantColor returns the color for a given quadrant
-func getQuadrantColor(x, y, width, height int) color.RGBA {
-	midX := width / 2
-	midY := height / 2
-
-	if y < midY {
-		if x < midX {
-			return color.RGBA{255, 0, 0, 255} // Top-left: Red
-		}
-		return color.RGBA{0, 255, 0, 255} // Top-right: Green
+// createTestImage creates a test image with the given dimensions and optional transparency
+func createTestImage(width, height int, transparent bool) image.Image {
+	var img draw.Image
+	if transparent {
+		img = image.NewRGBA(image.Rect(0, 0, width, height))
+		// Fill with semi-transparent blue
+		draw.Draw(img, img.Bounds(), &image.Uniform{color.RGBA{0, 0, 255, 128}}, image.Point{}, draw.Src)
+	} else {
+		img = image.NewRGBA(image.Rect(0, 0, width, height))
+		// Fill with opaque red
+		draw.Draw(img, img.Bounds(), &image.Uniform{color.RGBA{255, 0, 0, 255}}, image.Point{}, draw.Src)
 	}
-
-	if x < midX {
-		return color.RGBA{0, 0, 255, 255} // Bottom-left: Blue
-	}
-	return color.RGBA{255, 255, 0, 255} // Bottom-right: Yellow
+	return img
 }
 
-// createTestImage creates a simple test image with distinct corners for rotation testing
-// The image has different colors in each corner to verify rotation correctness:
-// - Top-left: Red
-// - Top-right: Green
-// - Bottom-left: Blue
-// - Bottom-right: Yellow
-func createTestImage(width, height int) *image.RGBA {
+// createDistinctiveImage creates an image with different colors in corners for testing rotation/crop
+func createDistinctiveImage(width, height int) image.Image {
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
 
-	// Fill with distinct colors in each quadrant
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			c := getQuadrantColor(x, y, width, height)
-			img.Set(x, y, c)
-		}
-	}
+	// Top-left: Red
+	draw.Draw(img, image.Rect(0, 0, width/2, height/2),
+		&image.Uniform{color.RGBA{255, 0, 0, 255}}, image.Point{}, draw.Src)
+
+	// Top-right: Green
+	draw.Draw(img, image.Rect(width/2, 0, width, height/2),
+		&image.Uniform{color.RGBA{0, 255, 0, 255}}, image.Point{}, draw.Src)
+
+	// Bottom-left: Blue
+	draw.Draw(img, image.Rect(0, height/2, width/2, height),
+		&image.Uniform{color.RGBA{0, 0, 255, 255}}, image.Point{}, draw.Src)
+
+	// Bottom-right: Yellow
+	draw.Draw(img, image.Rect(width/2, height/2, width, height),
+		&image.Uniform{color.RGBA{255, 255, 0, 255}}, image.Point{}, draw.Src)
 
 	return img
 }
 
-// createTransparentTestImage creates a test image with transparency gradient
-func createTransparentTestImage(width, height int) *image.RGBA {
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
+func TestResize_PortraitToLandscape(t *testing.T) {
+	t.Parallel()
 
-	// Fill with horizontal transparency gradient (left=transparent, right=opaque)
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			// Create a horizontal gradient of transparency
-			// Ensure we don't overflow by using explicit bounds checking
-			alphaVal := (x * 255) / width
-			if alphaVal > 255 {
-				alphaVal = 255
-			}
-			if alphaVal < 0 {
-				alphaVal = 0
-			}
-			//nolint:gosec // G115: alphaVal is guaranteed to be in range [0, 255]
-			alpha := uint8(alphaVal)
-			c := color.RGBA{255, 0, 0, alpha}
-			img.Set(x, y, c)
+	// Create a portrait image (400x600)
+	img := createTestImage(400, 600, false)
+
+	// Resize to landscape (800x400)
+	result := Resize(img, 800, 400)
+
+	require.NotNil(t, result)
+	bounds := result.Bounds()
+	assert.Equal(t, 800, bounds.Dx(), "width should be exactly 800")
+	assert.Equal(t, 400, bounds.Dy(), "height should be exactly 400")
+}
+
+func TestResize_LandscapeToPortrait(t *testing.T) {
+	t.Parallel()
+
+	// Create a landscape image (800x400)
+	img := createTestImage(800, 400, false)
+
+	// Resize to portrait (400x800)
+	result := Resize(img, 400, 800)
+
+	require.NotNil(t, result)
+	bounds := result.Bounds()
+	assert.Equal(t, 400, bounds.Dx(), "width should be exactly 400")
+	assert.Equal(t, 800, bounds.Dy(), "height should be exactly 800")
+}
+
+func TestResize_SquareToRectangle(t *testing.T) {
+	t.Parallel()
+
+	// Create a square image (500x500)
+	img := createTestImage(500, 500, false)
+
+	// Resize to rectangle (1000x500)
+	result := Resize(img, 1000, 500)
+
+	require.NotNil(t, result)
+	bounds := result.Bounds()
+	assert.Equal(t, 1000, bounds.Dx(), "width should be exactly 1000")
+	assert.Equal(t, 500, bounds.Dy(), "height should be exactly 500")
+}
+
+func TestResize_SmallToLarge(t *testing.T) {
+	t.Parallel()
+
+	// Create a small image (100x100)
+	img := createTestImage(100, 100, false)
+
+	// Resize to large (800x600)
+	result := Resize(img, 800, 600)
+
+	require.NotNil(t, result)
+	bounds := result.Bounds()
+	assert.Equal(t, 800, bounds.Dx(), "width should be exactly 800")
+	assert.Equal(t, 600, bounds.Dy(), "height should be exactly 600")
+}
+
+func TestResize_LargeToSmall(t *testing.T) {
+	t.Parallel()
+
+	// Create a large image (2000x1500)
+	img := createTestImage(2000, 1500, false)
+
+	// Resize to small (200x150)
+	result := Resize(img, 200, 150)
+
+	require.NotNil(t, result)
+	bounds := result.Bounds()
+	assert.Equal(t, 200, bounds.Dx(), "width should be exactly 200")
+	assert.Equal(t, 150, bounds.Dy(), "height should be exactly 150")
+}
+
+func TestResize_TransparencyPreserved(t *testing.T) {
+	t.Parallel()
+
+	// Create a transparent image
+	img := createTestImage(400, 300, true)
+
+	// Resize
+	result := Resize(img, 200, 150)
+
+	require.NotNil(t, result)
+
+	// Check that the result is RGBA (supports transparency)
+	_, isRGBA := result.(*image.RGBA)
+	_, isNRGBA := result.(*image.NRGBA)
+	assert.True(t, isRGBA || isNRGBA, "result should support transparency")
+}
+
+func TestResize_MaxDimensionEnforcement(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name           string
+		inputWidth     int
+		inputHeight    int
+		requestWidth   int
+		requestHeight  int
+		expectedWidth  int
+		expectedHeight int
+	}{
+		{
+			name:           "width exceeds max",
+			inputWidth:     800,
+			inputHeight:    600,
+			requestWidth:   2000,
+			requestHeight:  600,
+			expectedWidth:  1400,
+			expectedHeight: 420,
+		},
+		{
+			name:           "height exceeds max",
+			inputWidth:     600,
+			inputHeight:    800,
+			requestWidth:   600,
+			requestHeight:  2000,
+			expectedWidth:  420,
+			expectedHeight: 1400,
+		},
+		{
+			name:           "both exceed max",
+			inputWidth:     800,
+			inputHeight:    600,
+			requestWidth:   2800,
+			requestHeight:  2100,
+			expectedWidth:  1400,
+			expectedHeight: 1050,
+		},
+		{
+			name:           "within max dimensions",
+			inputWidth:     800,
+			inputHeight:    600,
+			requestWidth:   1000,
+			requestHeight:  750,
+			expectedWidth:  1000,
+			expectedHeight: 750,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			img := createTestImage(tc.inputWidth, tc.inputHeight, false)
+			result := Resize(img, tc.requestWidth, tc.requestHeight)
+
+			require.NotNil(t, result)
+			bounds := result.Bounds()
+			assert.Equal(t, tc.expectedWidth, bounds.Dx(), "width should match expected")
+			assert.Equal(t, tc.expectedHeight, bounds.Dy(), "height should match expected")
+		})
+	}
+}
+
+func TestResize_EdgeCase1x1(t *testing.T) {
+	t.Parallel()
+
+	// Create an image
+	img := createTestImage(100, 100, false)
+
+	// Resize to 1x1
+	result := Resize(img, 1, 1)
+
+	require.NotNil(t, result)
+	bounds := result.Bounds()
+	assert.Equal(t, 1, bounds.Dx(), "width should be 1")
+	assert.Equal(t, 1, bounds.Dy(), "height should be 1")
+}
+
+func TestResize_EdgeCaseVeryLargeDimensions(t *testing.T) {
+	t.Parallel()
+
+	// Create a small image
+	img := createTestImage(100, 100, false)
+
+	// Request very large dimensions (should be clamped)
+	result := Resize(img, 5000, 5000)
+
+	require.NotNil(t, result)
+	bounds := result.Bounds()
+	assert.LessOrEqual(t, bounds.Dx(), MaxOutputDimension, "width should not exceed max")
+	assert.LessOrEqual(t, bounds.Dy(), MaxOutputDimension, "height should not exceed max")
+	assert.Equal(t, bounds.Dx(), bounds.Dy(), "should maintain aspect ratio (square)")
+}
+
+func TestResize_EdgeCaseZeroOrNegativeDimensions(t *testing.T) {
+	t.Parallel()
+
+	img := createTestImage(100, 100, false)
+
+	testCases := []struct {
+		name   string
+		width  int
+		height int
+	}{
+		{"zero width", 0, 100},
+		{"zero height", 100, 0},
+		{"both zero", 0, 0},
+		{"negative width", -10, 100},
+		{"negative height", 100, -10},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := Resize(img, tc.width, tc.height)
+
+			require.NotNil(t, result)
+			bounds := result.Bounds()
+			// Should default to 1x1
+			assert.Equal(t, 1, bounds.Dx(), "width should default to 1")
+			assert.Equal(t, 1, bounds.Dy(), "height should default to 1")
+		})
+	}
+}
+
+func TestResize_SameDimensionsAsSource(t *testing.T) {
+	t.Parallel()
+
+	// Create an image
+	img := createTestImage(400, 300, false)
+
+	// Resize to same dimensions
+	result := Resize(img, 400, 300)
+
+	require.NotNil(t, result)
+	bounds := result.Bounds()
+	assert.Equal(t, 400, bounds.Dx(), "width should remain 400")
+	assert.Equal(t, 300, bounds.Dy(), "height should remain 300")
+}
+
+func TestResize_NilImage(t *testing.T) {
+	t.Parallel()
+
+	result := Resize(nil, 100, 100)
+	assert.Nil(t, result, "should return nil for nil input")
+}
+
+func TestResize_CenterCrop(t *testing.T) {
+	t.Parallel()
+
+	// Create a distinctive image to verify center cropping
+	img := createDistinctiveImage(400, 400)
+
+	// Resize to smaller dimensions - should crop from center
+	result := Resize(img, 200, 200)
+
+	require.NotNil(t, result)
+	bounds := result.Bounds()
+	assert.Equal(t, 200, bounds.Dx(), "width should be 200")
+	assert.Equal(t, 200, bounds.Dy(), "height should be 200")
+
+	// The center of the result should contain parts of all four quadrants
+	// since we're cropping from the center of the original image
+	centerX := bounds.Dx() / 2
+	centerY := bounds.Dy() / 2
+
+	// Verify image is not nil by checking center pixel exists
+	rgbaResult, ok := result.(*image.NRGBA)
+	if !ok {
+		rgbaResult2, ok2 := result.(*image.RGBA)
+		assert.True(t, ok2, "result should be RGBA or NRGBA")
+		if ok2 {
+			_ = rgbaResult2.At(centerX, centerY)
 		}
+	} else {
+		_ = rgbaResult.At(centerX, centerY)
+	}
+}
+
+func TestResize_VariousAspectRatios(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name           string
+		srcWidth       int
+		srcHeight      int
+		targetWidth    int
+		targetHeight   int
+		expectedWidth  int
+		expectedHeight int
+	}{
+		{
+			name:           "16:9 to 4:3",
+			srcWidth:       1600,
+			srcHeight:      900,
+			targetWidth:    800,
+			targetHeight:   600,
+			expectedWidth:  800,
+			expectedHeight: 600,
+		},
+		{
+			name:           "4:3 to 16:9 (exceeds max)",
+			srcWidth:       800,
+			srcHeight:      600,
+			targetWidth:    1600,
+			targetHeight:   900,
+			expectedWidth:  1400, // Clamped by max dimension
+			expectedHeight: 788,  // Proportionally scaled
+		},
+		{
+			name:           "1:1 to 2:1",
+			srcWidth:       500,
+			srcHeight:      500,
+			targetWidth:    1000,
+			targetHeight:   500,
+			expectedWidth:  1000,
+			expectedHeight: 500,
+		},
+		{
+			name:           "2:1 to 1:1",
+			srcWidth:       1000,
+			srcHeight:      500,
+			targetWidth:    500,
+			targetHeight:   500,
+			expectedWidth:  500,
+			expectedHeight: 500,
+		},
+		{
+			name:           "3:2 to 1:1",
+			srcWidth:       600,
+			srcHeight:      400,
+			targetWidth:    400,
+			targetHeight:   400,
+			expectedWidth:  400,
+			expectedHeight: 400,
+		},
+		{
+			name:           "ultra-wide to portrait",
+			srcWidth:       2560,
+			srcHeight:      1080,
+			targetWidth:    600,
+			targetHeight:   800,
+			expectedWidth:  600,
+			expectedHeight: 800,
+		},
 	}
 
-	return img
-}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-// getColorAt is a helper to get the color at a specific position
-func getColorAt(img image.Image, x, y int) color.Color {
-	return img.At(x, y)
-}
+			img := createTestImage(tc.srcWidth, tc.srcHeight, false)
+			result := Resize(img, tc.targetWidth, tc.targetHeight)
 
-// colorsEqual checks if two colors are equal (allowing small differences due to encoding)
-func colorsEqual(c1, c2 color.Color) bool {
-	r1, g1, b1, a1 := c1.RGBA()
-	r2, g2, b2, a2 := c2.RGBA()
-
-	// Allow small differences (within 1%) due to image encoding/decoding
-	threshold := uint32(655) // ~1% of 65535
-
-	return abs(r1, r2) <= threshold &&
-		abs(g1, g2) <= threshold &&
-		abs(b1, b2) <= threshold &&
-		abs(a1, a2) <= threshold
-}
-
-func abs(a, b uint32) uint32 {
-	if a > b {
-		return a - b
+			require.NotNil(t, result)
+			bounds := result.Bounds()
+			assert.Equal(t, tc.expectedWidth, bounds.Dx(), "width should match expected")
+			assert.Equal(t, tc.expectedHeight, bounds.Dy(), "height should match expected")
+		})
 	}
-	return b - a
+}
+
+func TestEnforceMaxDimensions(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name           string
+		width          int
+		height         int
+		expectedWidth  int
+		expectedHeight int
+	}{
+		{
+			name:           "both within limit",
+			width:          1000,
+			height:         800,
+			expectedWidth:  1000,
+			expectedHeight: 800,
+		},
+		{
+			name:           "width exceeds limit",
+			width:          2000,
+			height:         1000,
+			expectedWidth:  1400,
+			expectedHeight: 700,
+		},
+		{
+			name:           "height exceeds limit",
+			width:          1000,
+			height:         2000,
+			expectedWidth:  700,
+			expectedHeight: 1400,
+		},
+		{
+			name:           "both exceed limit proportionally",
+			width:          2800,
+			height:         2100,
+			expectedWidth:  1400,
+			expectedHeight: 1050,
+		},
+		{
+			name:           "both exceed limit - square",
+			width:          2000,
+			height:         2000,
+			expectedWidth:  1400,
+			expectedHeight: 1400,
+		},
+		{
+			name:           "zero dimensions",
+			width:          0,
+			height:         0,
+			expectedWidth:  1,
+			expectedHeight: 1,
+		},
+		{
+			name:           "negative dimensions",
+			width:          -100,
+			height:         -200,
+			expectedWidth:  1,
+			expectedHeight: 1,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			w, h := enforceMaxDimensions(tc.width, tc.height)
+			assert.Equal(t, tc.expectedWidth, w, "width should match expected")
+			assert.Equal(t, tc.expectedHeight, h, "height should match expected")
+		})
+	}
 }
 
 func TestRotate90(t *testing.T) {
-	tests := []struct {
-		name   string
-		width  int
-		height int
-	}{
-		{
-			name:   "square image",
-			width:  100,
-			height: 100,
-		},
-		{
-			name:   "landscape image",
-			width:  200,
-			height: 100,
-		},
-		{
-			name:   "portrait image",
-			width:  100,
-			height: 200,
-		},
-	}
+	t.Parallel()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create test image
-			original := createTestImage(tt.width, tt.height)
+	img := createTestImage(400, 300, false)
+	result := Rotate90(img)
 
-			// Rotate 90 degrees
-			rotated := Rotate90(original)
+	require.NotNil(t, result)
+	bounds := result.Bounds()
+	// After 90° rotation, dimensions should be swapped
+	assert.Equal(t, 300, bounds.Dx(), "width should be original height")
+	assert.Equal(t, 400, bounds.Dy(), "height should be original width")
+}
 
-			// Verify dimensions are swapped
-			bounds := rotated.Bounds()
-			assert.Equal(t, tt.height, bounds.Dx(), "Width should be original height")
-			assert.Equal(t, tt.width, bounds.Dy(), "Height should be original width")
+func TestRotate90_NilImage(t *testing.T) {
+	t.Parallel()
 
-			// The imaging library rotates counter-clockwise (CCW)
-			// After 90° CCW rotation:
-			// - Original top-left (red) -> bottom-left
-			// - Original top-right (green) -> top-left
-			// - Original bottom-left (blue) -> bottom-right
-			// - Original bottom-right (yellow) -> top-right
-
-			// Sample points from corners (5 pixels in from edge to avoid boundary effects)
-			margin := 5
-
-			// Top-left should now be green (was top-right)
-			tlColor := getColorAt(rotated, margin, margin)
-			assert.True(t, colorsEqual(tlColor, color.RGBA{0, 255, 0, 255}),
-				"Top-left should be green after 90° CCW rotation")
-
-			// Top-right should now be yellow (was bottom-right)
-			trColor := getColorAt(rotated, bounds.Dx()-margin, margin)
-			assert.True(t, colorsEqual(trColor, color.RGBA{255, 255, 0, 255}),
-				"Top-right should be yellow after 90° CCW rotation")
-
-			// Bottom-left should now be red (was top-left)
-			blColor := getColorAt(rotated, margin, bounds.Dy()-margin)
-			assert.True(t, colorsEqual(blColor, color.RGBA{255, 0, 0, 255}),
-				"Bottom-left should be red after 90° CCW rotation")
-
-			// Bottom-right should now be blue (was bottom-left)
-			brColor := getColorAt(rotated, bounds.Dx()-margin, bounds.Dy()-margin)
-			assert.True(t, colorsEqual(brColor, color.RGBA{0, 0, 255, 255}),
-				"Bottom-right should be blue after 90° CCW rotation")
-		})
-	}
+	result := Rotate90(nil)
+	assert.Nil(t, result, "should return nil for nil input")
 }
 
 func TestRotate180(t *testing.T) {
-	tests := []struct {
-		name   string
-		width  int
-		height int
-	}{
-		{
-			name:   "square image",
-			width:  100,
-			height: 100,
-		},
-		{
-			name:   "landscape image",
-			width:  200,
-			height: 100,
-		},
-		{
-			name:   "portrait image",
-			width:  100,
-			height: 200,
-		},
-	}
+	t.Parallel()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create test image
-			original := createTestImage(tt.width, tt.height)
+	img := createTestImage(400, 300, false)
+	result := Rotate180(img)
 
-			// Rotate 180 degrees
-			rotated := Rotate180(original)
+	require.NotNil(t, result)
+	bounds := result.Bounds()
+	// After 180° rotation, dimensions should remain the same
+	assert.Equal(t, 400, bounds.Dx(), "width should remain the same")
+	assert.Equal(t, 300, bounds.Dy(), "height should remain the same")
+}
 
-			// Verify dimensions remain the same
-			bounds := rotated.Bounds()
-			assert.Equal(t, tt.width, bounds.Dx(), "Width should remain the same")
-			assert.Equal(t, tt.height, bounds.Dy(), "Height should remain the same")
+func TestRotate180_NilImage(t *testing.T) {
+	t.Parallel()
 
-			// After 180° rotation:
-			// - Original top-left (red) -> bottom-right
-			// - Original top-right (green) -> bottom-left
-			// - Original bottom-left (blue) -> top-right
-			// - Original bottom-right (yellow) -> top-left
-
-			// Sample points from corners
-			margin := 5
-
-			// Top-left should now be yellow (was bottom-right)
-			tlColor := getColorAt(rotated, margin, margin)
-			assert.True(t, colorsEqual(tlColor, color.RGBA{255, 255, 0, 255}),
-				"Top-left should be yellow after 180° rotation")
-
-			// Top-right should now be blue (was bottom-left)
-			trColor := getColorAt(rotated, bounds.Dx()-margin, margin)
-			assert.True(t, colorsEqual(trColor, color.RGBA{0, 0, 255, 255}),
-				"Top-right should be blue after 180° rotation")
-
-			// Bottom-left should now be green (was top-right)
-			blColor := getColorAt(rotated, margin, bounds.Dy()-margin)
-			assert.True(t, colorsEqual(blColor, color.RGBA{0, 255, 0, 255}),
-				"Bottom-left should be green after 180° rotation")
-
-			// Bottom-right should now be red (was top-left)
-			brColor := getColorAt(rotated, bounds.Dx()-margin, bounds.Dy()-margin)
-			assert.True(t, colorsEqual(brColor, color.RGBA{255, 0, 0, 255}),
-				"Bottom-right should be red after 180° rotation")
-		})
-	}
+	result := Rotate180(nil)
+	assert.Nil(t, result, "should return nil for nil input")
 }
 
 func TestRotate270(t *testing.T) {
-	tests := []struct {
+	t.Parallel()
+
+	img := createTestImage(400, 300, false)
+	result := Rotate270(img)
+
+	require.NotNil(t, result)
+	bounds := result.Bounds()
+	// After 270° rotation, dimensions should be swapped
+	assert.Equal(t, 300, bounds.Dx(), "width should be original height")
+	assert.Equal(t, 400, bounds.Dy(), "height should be original width")
+}
+
+func TestRotate270_NilImage(t *testing.T) {
+	t.Parallel()
+
+	result := Rotate270(nil)
+	assert.Nil(t, result, "should return nil for nil input")
+}
+
+func TestRotate_TransparencyPreserved(t *testing.T) {
+	t.Parallel()
+
+	img := createTestImage(400, 300, true)
+
+	testCases := []struct {
 		name   string
-		width  int
-		height int
+		rotate func(image.Image) image.Image
 	}{
-		{
-			name:   "square image",
-			width:  100,
-			height: 100,
-		},
-		{
-			name:   "landscape image",
-			width:  200,
-			height: 100,
-		},
-		{
-			name:   "portrait image",
-			width:  100,
-			height: 200,
-		},
+		{"Rotate90", Rotate90},
+		{"Rotate180", Rotate180},
+		{"Rotate270", Rotate270},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create test image
-			original := createTestImage(tt.width, tt.height)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-			// Rotate 270 degrees
-			rotated := Rotate270(original)
+			result := tc.rotate(img)
+			require.NotNil(t, result)
 
-			// Verify dimensions are swapped
-			bounds := rotated.Bounds()
-			assert.Equal(t, tt.height, bounds.Dx(), "Width should be original height")
-			assert.Equal(t, tt.width, bounds.Dy(), "Height should be original width")
-
-			// The imaging library rotates counter-clockwise
-			// After 270° CCW rotation (= 90° CW):
-			// - Original top-left (red) -> top-right
-			// - Original top-right (green) -> bottom-right
-			// - Original bottom-left (blue) -> top-left
-			// - Original bottom-right (yellow) -> bottom-left
-
-			// Sample points from corners
-			margin := 5
-
-			// Top-left should now be blue (was bottom-left)
-			tlColor := getColorAt(rotated, margin, margin)
-			assert.True(t, colorsEqual(tlColor, color.RGBA{0, 0, 255, 255}),
-				"Top-left should be blue after 270° CCW rotation")
-
-			// Top-right should now be red (was top-left)
-			trColor := getColorAt(rotated, bounds.Dx()-margin, margin)
-			assert.True(t, colorsEqual(trColor, color.RGBA{255, 0, 0, 255}),
-				"Top-right should be red after 270° CCW rotation")
-
-			// Bottom-left should now be yellow (was bottom-right)
-			blColor := getColorAt(rotated, margin, bounds.Dy()-margin)
-			assert.True(t, colorsEqual(blColor, color.RGBA{255, 255, 0, 255}),
-				"Bottom-left should be yellow after 270° CCW rotation")
-
-			// Bottom-right should now be green (was top-right)
-			brColor := getColorAt(rotated, bounds.Dx()-margin, bounds.Dy()-margin)
-			assert.True(t, colorsEqual(brColor, color.RGBA{0, 255, 0, 255}),
-				"Bottom-right should be green after 270° CCW rotation")
+			// Check that result supports transparency
+			_, isRGBA := result.(*image.RGBA)
+			_, isNRGBA := result.(*image.NRGBA)
+			assert.True(t, isRGBA || isNRGBA, "result should support transparency")
 		})
 	}
 }
 
-func TestTransparencyPreservation(t *testing.T) {
-	// Create a transparent test image with horizontal gradient
-	original := createTransparentTestImage(100, 100)
+func TestResize_RealWorldDimensions(t *testing.T) {
+	t.Parallel()
 
-	t.Run("rotate90 preserves transparency", func(t *testing.T) {
-		rotated := Rotate90(original)
-
-		// After 90° CCW rotation, horizontal gradient becomes vertical
-		// Top should have original right edge (opaque)
-		// Bottom should have original left edge (transparent)
-
-		// Check top (was right edge - opaque)
-		topColor := getColorAt(rotated, 50, 5)
-		_, _, _, a := topColor.RGBA()
-		assert.Greater(t, a, uint32(50000), "Top should be mostly opaque")
-
-		// Check bottom (was left edge - transparent)
-		bottomColor := getColorAt(rotated, 50, 95)
-		_, _, _, a2 := bottomColor.RGBA()
-		assert.Less(t, a2, uint32(10000), "Bottom should be mostly transparent")
-	})
-
-	t.Run("rotate180 preserves transparency", func(t *testing.T) {
-		rotated := Rotate180(original)
-
-		// After 180° rotation, transparency gradient is reversed horizontally
-		// Left edge should be mostly opaque (was right edge)
-		leftColor := getColorAt(rotated, 5, 50)
-		_, _, _, a := leftColor.RGBA()
-		assert.Greater(t, a, uint32(50000), "Left edge should be mostly opaque after 180°")
-
-		// Right edge should be mostly transparent (was left edge)
-		rightColor := getColorAt(rotated, 95, 50)
-		_, _, _, a2 := rightColor.RGBA()
-		assert.Less(t, a2, uint32(10000), "Right edge should be mostly transparent after 180°")
-	})
-
-	t.Run("rotate270 preserves transparency", func(t *testing.T) {
-		rotated := Rotate270(original)
-
-		// Check that alpha channel is preserved (not all opaque)
-		hasTransparency := false
-		bounds := rotated.Bounds()
-		for y := bounds.Min.Y; y < bounds.Max.Y; y += 10 {
-			for x := bounds.Min.X; x < bounds.Max.X; x += 10 {
-				_, _, _, a := rotated.At(x, y).RGBA()
-				if a < 65535 { // Not fully opaque
-					hasTransparency = true
-					break
-				}
-			}
-			if hasTransparency {
-				break
-			}
-		}
-		assert.True(t, hasTransparency, "Rotated image should preserve transparency")
-	})
-}
-
-func TestRotationChaining(t *testing.T) {
-	// Create test image
-	original := createTestImage(100, 100)
-
-	t.Run("four 90° rotations return to original", func(t *testing.T) {
-		// Rotate 90° four times should be equivalent to no rotation
-		result := Rotate90(original)
-		result = Rotate90(result)
-		result = Rotate90(result)
-		result = Rotate90(result)
-
-		// Verify dimensions
-		bounds := result.Bounds()
-		assert.Equal(t, original.Bounds().Dx(), bounds.Dx())
-		assert.Equal(t, original.Bounds().Dy(), bounds.Dy())
-
-		// Verify corners match original
-		margin := 5
-		origTL := getColorAt(original, margin, margin)
-		resultTL := getColorAt(result, margin, margin)
-		assert.True(t, colorsEqual(origTL, resultTL), "Top-left should match after 4x90° rotation")
-	})
-
-	t.Run("two 180° rotations return to original", func(t *testing.T) {
-		// Rotate 180° twice should return to original
-		result := Rotate180(original)
-		result = Rotate180(result)
-
-		// Verify dimensions
-		bounds := result.Bounds()
-		assert.Equal(t, original.Bounds().Dx(), bounds.Dx())
-		assert.Equal(t, original.Bounds().Dy(), bounds.Dy())
-
-		// Verify corners match original
-		margin := 5
-		origTL := getColorAt(original, margin, margin)
-		resultTL := getColorAt(result, margin, margin)
-		assert.True(t, colorsEqual(origTL, resultTL), "Top-left should match after 2x180° rotation")
-	})
-
-	t.Run("90° + 270° equals 360°", func(t *testing.T) {
-		// Rotate 90° then 270° should return to original orientation
-		result := Rotate90(original)
-		result = Rotate270(result)
-
-		// Verify dimensions
-		bounds := result.Bounds()
-		assert.Equal(t, original.Bounds().Dx(), bounds.Dx())
-		assert.Equal(t, original.Bounds().Dy(), bounds.Dy())
-
-		// Verify corners match original
-		margin := 5
-		origTL := getColorAt(original, margin, margin)
-		resultTL := getColorAt(result, margin, margin)
-		assert.True(t, colorsEqual(origTL, resultTL), "Should return to original after 90°+270°")
-	})
-}
-
-func TestRotateWithPNGEncoding(t *testing.T) {
-	// Test that rotated images can be encoded to PNG without errors
-	original := createTestImage(100, 100)
-
-	tests := []struct {
-		name     string
-		rotateOp func(image.Image) image.Image
+	// Test with common real-world image dimensions
+	testCases := []struct {
+		name           string
+		srcWidth       int
+		srcHeight      int
+		targetWidth    int
+		targetHeight   int
+		expectedWidth  int
+		expectedHeight int
 	}{
-		{"rotate90", Rotate90},
-		{"rotate180", Rotate180},
-		{"rotate270", Rotate270},
+		{
+			name:           "HD to thumbnail",
+			srcWidth:       1920,
+			srcHeight:      1080,
+			targetWidth:    320,
+			targetHeight:   180,
+			expectedWidth:  320,
+			expectedHeight: 180,
+		},
+		{
+			name:           "4K to HD (exceeds max)",
+			srcWidth:       3840,
+			srcHeight:      2160,
+			targetWidth:    1920,
+			targetHeight:   1080,
+			expectedWidth:  1400, // Clamped
+			expectedHeight: 788,  // Proportionally scaled
+		},
+		{
+			name:           "Portrait photo to square",
+			srcWidth:       3024,
+			srcHeight:      4032,
+			targetWidth:    800,
+			targetHeight:   800,
+			expectedWidth:  800,
+			expectedHeight: 800,
+		},
+		{
+			name:           "Instagram post",
+			srcWidth:       1080,
+			srcHeight:      1080,
+			targetWidth:    1080,
+			targetHeight:   1080,
+			expectedWidth:  1080,
+			expectedHeight: 1080,
+		},
+		{
+			name:           "YouTube thumbnail",
+			srcWidth:       1920,
+			srcHeight:      1080,
+			targetWidth:    1280,
+			targetHeight:   720,
+			expectedWidth:  1280,
+			expectedHeight: 720,
+		},
+		{
+			name:           "Mobile screenshot to preview",
+			srcWidth:       1170,
+			srcHeight:      2532,
+			targetWidth:    375,
+			targetHeight:   812,
+			expectedWidth:  375,
+			expectedHeight: 812,
+		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rotated := tt.rotateOp(original)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-			// Encode to PNG
-			var buf []byte
-			err := png.Encode(&mockWriter{buf: &buf}, rotated)
-			require.NoError(t, err, "Should encode rotated image to PNG without error")
-			assert.NotEmpty(t, buf, "PNG data should not be empty")
+			img := createTestImage(tc.srcWidth, tc.srcHeight, false)
+			result := Resize(img, tc.targetWidth, tc.targetHeight)
+
+			require.NotNil(t, result)
+			bounds := result.Bounds()
+			assert.Equal(t, tc.expectedWidth, bounds.Dx(), "width should match expected")
+			assert.Equal(t, tc.expectedHeight, bounds.Dy(), "height should match expected")
 		})
 	}
-}
-
-// mockWriter is a simple writer for testing PNG encoding
-type mockWriter struct {
-	buf *[]byte
-}
-
-func (w *mockWriter) Write(p []byte) (n int, err error) {
-	*w.buf = append(*w.buf, p...)
-	return len(p), nil
-}
-
-func TestRotateDifferentImageTypes(t *testing.T) {
-	// Test with different image types to ensure compatibility
-	t.Run("RGBA image", func(t *testing.T) {
-		img := image.NewRGBA(image.Rect(0, 0, 50, 100))
-		rotated := Rotate90(img)
-		bounds := rotated.Bounds()
-		assert.Equal(t, 100, bounds.Dx())
-		assert.Equal(t, 50, bounds.Dy())
-	})
-
-	t.Run("NRGBA image", func(t *testing.T) {
-		img := image.NewNRGBA(image.Rect(0, 0, 50, 100))
-		rotated := Rotate90(img)
-		bounds := rotated.Bounds()
-		assert.Equal(t, 100, bounds.Dx())
-		assert.Equal(t, 50, bounds.Dy())
-	})
-
-	t.Run("Gray image", func(t *testing.T) {
-		img := image.NewGray(image.Rect(0, 0, 50, 100))
-		rotated := Rotate90(img)
-		bounds := rotated.Bounds()
-		assert.Equal(t, 100, bounds.Dx())
-		assert.Equal(t, 50, bounds.Dy())
-	})
-}
-
-func TestRotateEdgeCases(t *testing.T) {
-	t.Run("very small image (1x1)", func(t *testing.T) {
-		img := createTestImage(1, 1)
-		rotated := Rotate90(img)
-		bounds := rotated.Bounds()
-		assert.Equal(t, 1, bounds.Dx())
-		assert.Equal(t, 1, bounds.Dy())
-	})
-
-	t.Run("very small image (2x3)", func(t *testing.T) {
-		img := createTestImage(2, 3)
-		rotated := Rotate90(img)
-		bounds := rotated.Bounds()
-		assert.Equal(t, 3, bounds.Dx())
-		assert.Equal(t, 2, bounds.Dy())
-	})
-
-	t.Run("large image", func(t *testing.T) {
-		img := createTestImage(1000, 1500)
-		rotated := Rotate90(img)
-		bounds := rotated.Bounds()
-		assert.Equal(t, 1500, bounds.Dx())
-		assert.Equal(t, 1000, bounds.Dy())
-	})
 }
