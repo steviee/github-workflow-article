@@ -384,10 +384,3 @@ func TestMetricsResponseWriter_MultipleWriteHeaders(t *testing.T) {
 	)
 	assert.Greater(t, count, float64(0), "should record first status code")
 }
-
-func resetMetrics() {
-	// Helper function to reset metrics between tests if needed
-	// This is not used in parallel tests but could be useful for sequential tests
-	handlerPkg.HTTPRequestsTotal.Reset()
-	handlerPkg.HTTPRequestDuration.Reset()
-}

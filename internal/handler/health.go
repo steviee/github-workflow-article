@@ -1,7 +1,9 @@
+// Package handler provides HTTP request handlers for the API endpoints.
 package handler
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
@@ -12,7 +14,7 @@ type HealthResponse struct {
 
 // HealthHandler handles GET /health requests
 // Always returns 200 OK to indicate the service is running
-func HealthHandler(w http.ResponseWriter, r *http.Request) {
+func HealthHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
@@ -21,14 +23,15 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Marshal and write response
-	// In production code, we'd log errors, but for now keep it simple
-	_ = json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Error encoding health response: %v", err)
+	}
 }
 
 // ReadyHandler handles GET /ready requests
 // Returns 200 OK when the service is ready to accept traffic
 // In the future, this could check dependencies like cache, external services, etc.
-func ReadyHandler(w http.ResponseWriter, r *http.Request) {
+func ReadyHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
@@ -37,5 +40,7 @@ func ReadyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Marshal and write response
-	_ = json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Error encoding ready response: %v", err)
+	}
 }
