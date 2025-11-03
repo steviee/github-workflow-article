@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
@@ -14,7 +15,7 @@ type ImageErrorResponse struct {
 // ImageHandler handles GET /image requests
 // This is a placeholder implementation that returns 501 Not Implemented
 // The actual image processing logic will be implemented in Issues #6-#10
-func ImageHandler(w http.ResponseWriter, r *http.Request) {
+func ImageHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNotImplemented)
 
@@ -24,5 +25,7 @@ func ImageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Marshal and write response
-	_ = json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Error encoding image error response: %v", err)
+	}
 }

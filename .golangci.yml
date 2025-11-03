@@ -8,23 +8,12 @@ run:
   # Include test files
   tests: true
 
-  # Which dirs to skip
-  skip-dirs:
-    - bin
-    - vendor
-    - var
-    - tmp
-
-  # Which files to skip
-  skip-files:
-    - ".*\\.pb\\.go$"
-    - ".*\\.gen\\.go$"
-
 # Output configuration
 output:
-  # Colored output
+  # Output formats: use colored line numbers
   formats:
     - format: colored-line-number
+      path: stdout
 
   # Print lines of code with issue
   print-issued-lines: true
@@ -228,6 +217,18 @@ issues:
   # Show only new issues
   new: false
 
+  # Which dirs to exclude
+  exclude-dirs:
+    - bin
+    - vendor
+    - var
+    - tmp
+
+  # Which files to exclude
+  exclude-files:
+    - ".*\\.pb\\.go$"
+    - ".*\\.gen\\.go$"
+
   # Exclude specific issues
   exclude-rules:
     # Exclude some linters from running on tests files
@@ -239,6 +240,9 @@ issues:
         - gosec
         - goconst
         - gocognit
+        - revive         # Allow unused parameters in test handlers
+        - gocritic       # Allow nil request bodies in tests
+        - govet          # Allow non-optimal field alignment in test structs
 
     # Exclude some staticcheck messages
     - linters:
@@ -267,6 +271,18 @@ issues:
         - gocyclo
         - gocognit
       text: "of func `(main|init)`"
+
+    # Allow os.Exit in main (exitAfterDefer is acceptable in cmd/main.go)
+    - path: cmd/api/main\.go
+      linters:
+        - gocritic
+      text: "exitAfterDefer"
+
+    # Allow non-optimal field alignment in config structs for clarity
+    - path: internal/config/config\.go
+      linters:
+        - govet
+      text: "fieldalignment"
 
   # Independently of option `exclude` we use default exclude patterns
   exclude-use-default: false

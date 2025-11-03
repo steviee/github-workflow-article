@@ -1,3 +1,4 @@
+// Package main is the entry point for the image processing REST API server.
 package main
 
 import (

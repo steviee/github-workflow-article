@@ -1,3 +1,4 @@
+// Package middleware provides HTTP middleware functions for request processing.
 package middleware
 
 import "net/http"
