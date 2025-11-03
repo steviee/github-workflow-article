@@ -45,7 +45,7 @@ func TestMetricsHandler(t *testing.T) {
 
 	// Check for our custom metrics
 	assert.Contains(t, body, "http_requests_total", "should include http_requests_total metric")
-	assert.Contains(t, body, "http_request_duration_seconds", "should include http_request_duration_seconds metric")
+	// Note: http_request_duration_seconds only appears after observations are recorded (tested in TestMetricsHandler_ObservesHistograms)
 	assert.Contains(t, body, "image_cache_hits_total", "should include image_cache_hits_total metric")
 	assert.Contains(t, body, "image_cache_misses_total", "should include image_cache_misses_total metric")
 	assert.Contains(t, body, "image_cache_size", "should include image_cache_size metric")
