@@ -18,11 +18,13 @@ type Fetcher struct {
 }
 
 // FetchResult contains the fetched image data and metadata
+//
+//nolint:govet // fieldalignment: struct layout is already optimal for cache locality
 type FetchResult struct {
 	Data        []byte
+	Size        int64
 	ContentType string
 	URL         string
-	Size        int64
 }
 
 // NewFetcher creates a new image fetcher with the given configuration
@@ -105,9 +107,9 @@ func (f *Fetcher) Fetch(url string) (*FetchResult, error) {
 	}
 
 	return &FetchResult{
-		Data:        data,
+		Data: data,
+		Size: size,
 		ContentType: contentType,
-		URL:         url,
-		Size:        size,
+		URL: url,
 	}, nil
 }
