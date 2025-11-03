@@ -240,6 +240,9 @@ issues:
         - gosec
         - goconst
         - gocognit
+        - revive         # Allow unused parameters in test handlers
+        - gocritic       # Allow nil request bodies in tests
+        - govet          # Allow non-optimal field alignment in test structs
 
     # Exclude some staticcheck messages
     - linters:
