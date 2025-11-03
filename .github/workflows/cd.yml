@@ -1,0 +1,341 @@
+name: CD Pipeline
+
+# Trigger on semantic version tags and manual workflow dispatch
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+' # Match v1.0.0, v1.2.3, etc.
+  workflow_dispatch: # Allow manual triggering for testing
+
+# Concurrency control: only one release at a time
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false # Don't cancel releases in progress
+
+# Environment variables
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Job 1: Build and publish multi-architecture Docker images
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+
+    # Required permissions for GitHub Container Registry and Releases
+    permissions:
+      contents: write # For creating GitHub releases
+      packages: write # For pushing to ghcr.io
+      id-token: write # For signing images (optional future use)
+
+    steps:
+      # Step 1: Checkout code with full history for changelog generation
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history and tags for changelog
+
+      # Step 2: Extract and validate semantic version from git tag
+      - name: Extract version metadata
+        id: version
+        run: |
+          # Get the tag name (e.g., v1.2.3)
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          echo "tag=${TAG_NAME}" >> $GITHUB_OUTPUT
+
+          # Extract version without 'v' prefix (e.g., 1.2.3)
+          VERSION=${TAG_NAME#v}
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+          # Parse semantic version components
+          if [[ $VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-([a-zA-Z0-9\.\-]+))?$ ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            PATCH="${BASH_REMATCH[3]}"
+            PRERELEASE="${BASH_REMATCH[5]}"
+
+            echo "major=${MAJOR}" >> $GITHUB_OUTPUT
+            echo "minor=${MINOR}" >> $GITHUB_OUTPUT
+            echo "patch=${PATCH}" >> $GITHUB_OUTPUT
+            echo "prerelease=${PRERELEASE}" >> $GITHUB_OUTPUT
+
+            echo "✅ Valid semantic version: ${VERSION}"
+            echo "   - Major: ${MAJOR}"
+            echo "   - Minor: ${MINOR}"
+            echo "   - Patch: ${PATCH}"
+            if [ -n "$PRERELEASE" ]; then
+              echo "   - Prerelease: ${PRERELEASE}"
+              echo "is_prerelease=true" >> $GITHUB_OUTPUT
+            else
+              echo "is_prerelease=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "❌ Invalid semantic version: ${VERSION}"
+            echo "Expected format: MAJOR.MINOR.PATCH[-PRERELEASE]"
+            exit 1
+          fi
+
+      # Step 3: Set up Docker Buildx for multi-architecture builds
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+          driver-opts: |
+            network=host
+
+      # Step 4: Set up QEMU for cross-platform emulation (required for arm64)
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      # Step 5: Generate Docker image tags and labels using metadata action
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Full semantic version (e.g., 1.2.3)
+            type=semver,pattern={{version}}
+            # Minor version (e.g., 1.2)
+            type=semver,pattern={{major}}.{{minor}}
+            # Major version (e.g., 1)
+            type=semver,pattern={{major}}
+            # Latest tag (only for non-prerelease versions)
+            type=raw,value=latest,enable=${{ steps.version.outputs.is_prerelease == 'false' }}
+          labels: |
+            org.opencontainers.image.title=Image Processing REST API
+            org.opencontainers.image.description=High-performance REST API for image fetching, caching, and transformations
+            org.opencontainers.image.vendor=steviee
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT
+
+      # Step 6: Login to GitHub Container Registry
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Step 7: Build and push multi-architecture Docker image
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true # Generate SLSA provenance attestation
+          sbom: true # Generate Software Bill of Materials
+
+      # Step 8: Output image information for verification
+      - name: Output image details
+        run: |
+          echo "## 🐳 Docker Image Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image Digest**: \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags**:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" | sed 's/,/\n/g' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Platforms**: linux/amd64, linux/arm64" >> $GITHUB_STEP_SUMMARY
+
+      # Step 9: Generate release notes from git history
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          # Get the previous tag
+          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sed -n '2p')
+
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "No previous tag found, using initial commit"
+            PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
+          fi
+
+          echo "Generating changelog from ${PREVIOUS_TAG} to ${{ steps.version.outputs.tag }}"
+
+          # Generate changelog
+          CHANGELOG=$(git log ${PREVIOUS_TAG}..${{ steps.version.outputs.tag }} \
+            --pretty=format:"- %s (%h)" \
+            --no-merges)
+
+          # Count commits
+          COMMIT_COUNT=$(git rev-list --count ${PREVIOUS_TAG}..${{ steps.version.outputs.tag }})
+
+          # Create release notes
+          cat > release_notes.md << 'EOF'
+          ## 🚀 Release ${{ steps.version.outputs.version }}
+
+          This release includes $COMMIT_COUNT new commit(s).
+
+          ### 📦 Docker Image
+
+          Pull the image:
+          ```bash
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+          ```
+
+          Run the container:
+          ```bash
+          docker run -d \
+            -p 8080:8080 \
+            --name image-api \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+          ```
+
+          ### 🏷️ Available Tags
+
+          This release is available under the following tags:
+          EOF
+
+          # Append tags to release notes
+          echo '```' >> release_notes.md
+          echo "${{ steps.meta.outputs.tags }}" | sed 's/,/\n/g' >> release_notes.md
+          echo '```' >> release_notes.md
+
+          # Add platform information
+          cat >> release_notes.md << 'EOF'
+
+          ### 🖥️ Supported Platforms
+
+          - `linux/amd64` (x86_64)
+          - `linux/arm64` (ARM 64-bit)
+
+          ### 📝 Changes
+
+          EOF
+
+          # Append changelog
+          if [ -n "$CHANGELOG" ]; then
+            echo "$CHANGELOG" >> release_notes.md
+          else
+            echo "- Initial release" >> release_notes.md
+          fi
+
+          # Add image digest
+          cat >> release_notes.md << 'EOF'
+
+          ### 🔒 Verification
+
+          **Image Digest**: `${{ steps.build.outputs.digest }}`
+
+          Verify the image:
+          ```bash
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          ```
+
+          ### 📚 Documentation
+
+          For detailed usage and API documentation, see the [README.md](https://github.com/${{ github.repository }}/blob/main/README.md).
+
+          ---
+
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREVIOUS_TAG}...${{ steps.version.outputs.tag }}
+          EOF
+
+          # Replace placeholders
+          sed -i "s/\$COMMIT_COUNT/${COMMIT_COUNT}/g" release_notes.md
+
+          echo "Release notes generated successfully"
+
+      # Step 10: Create GitHub Release
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Release ${{ steps.version.outputs.version }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ steps.version.outputs.is_prerelease == 'true' }}
+          generate_release_notes: false # We generate custom notes
+          make_latest: ${{ steps.version.outputs.is_prerelease == 'false' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Step 11: Post deployment verification
+      - name: Verify published image
+        run: |
+          echo "🔍 Verifying published image..."
+
+          # Pull the image by digest
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+
+          # Inspect the image
+          docker image inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }} \
+            --format='{{json .}}' | jq '{
+              Architecture: .Architecture,
+              Os: .Os,
+              Size: .Size,
+              Created: .Created,
+              RepoTags: .RepoTags,
+              RepoDigests: .RepoDigests
+            }'
+
+          echo "✅ Image verification successful"
+
+      # Step 12: Create deployment summary
+      - name: Create deployment summary
+        if: always()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          ## 🎉 Release Summary
+
+          **Version**: ${{ steps.version.outputs.version }}
+          **Tag**: ${{ steps.version.outputs.tag }}
+          **Commit**: ${{ github.sha }}
+          **Released by**: ${{ github.actor }}
+          **Prerelease**: ${{ steps.version.outputs.is_prerelease }}
+
+          ### Pull Command
+          ```bash
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+          ```
+
+          ### Quick Start
+          ```bash
+          docker run -d -p 8080:8080 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+          curl "http://localhost:8080/health"
+          ```
+
+          ### Resources
+          - [GitHub Release](https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }})
+          - [Container Image](https://github.com/${{ github.repository }}/pkgs/container/${{ github.event.repository.name }})
+          - [Documentation](https://github.com/${{ github.repository }}/blob/main/README.md)
+
+          ---
+          ✅ **Deployment completed successfully!**
+          EOF
+
+      # Step 13: Post failure summary
+      - name: Post failure summary
+        if: failure()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          ## ❌ Release Failed
+
+          The release process encountered an error. Please check the job logs above for details.
+
+          **Version**: ${{ steps.version.outputs.version }}
+          **Tag**: ${{ steps.version.outputs.tag }}
+          **Commit**: ${{ github.sha }}
+
+          Common issues:
+          - Invalid semantic version format
+          - Docker build failures
+          - Registry authentication issues
+          - Insufficient permissions
+
+          Please review and retry the release.
+          EOF
