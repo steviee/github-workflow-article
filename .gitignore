@@ -40,6 +40,8 @@ vendor/
 .env.local
 *.local
 
+.specstory/
+
 # Test cache
 *.test
 *.cover
