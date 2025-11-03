@@ -15,15 +15,6 @@ output:
     - format: colored-line-number
       path: stdout
 
-  # Print lines of code with issue
-  print-issued-lines: true
-
-  # Print linter name in the end of issue text
-  print-linter-name: true
-
-  # Make issues output unique by line
-  uniq-by-line: true
-
   # Sort results by file, line, and column
   sort-results: true
 
