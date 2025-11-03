@@ -171,3 +171,4 @@ All tests pass, coverage above threshold"
 ---
 
 **Remember**: Issues + README = Source of Truth. Always keep them updated!
+- Always use the golang-pro sub-agent for working with Golang code.
