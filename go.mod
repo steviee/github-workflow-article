@@ -5,6 +5,7 @@ go 1.25.3
 require (
 	github.com/disintegration/imaging v1.6.2
 	github.com/go-chi/chi/v5 v5.2.3
+	github.com/google/uuid v1.6.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/sirupsen/logrus v1.9.3
 )
