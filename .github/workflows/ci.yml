@@ -19,6 +19,11 @@ env:
   GO_VERSION: '1.24.x'  # Using 1.24 for golang.org/x/image compatibility
   COVERAGE_THRESHOLD: 85
 
+# Permissions required for security scanning
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   # Job 1: Run tests with race detection and coverage
   test:
