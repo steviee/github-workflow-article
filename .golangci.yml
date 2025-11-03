@@ -1,7 +1,7 @@
 # golangci-lint configuration
 # Reference: https://golangci-lint.run/usage/configuration/
 
-# Configuration file version
+# Configuration file version (required for v2.x)
 version: '2'
 
 run:
