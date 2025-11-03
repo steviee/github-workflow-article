@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"image"
 	_ "image/gif"  // Register GIF decoder
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/steviee/github-workflow-article/internal/cache"
 	"github.com/steviee/github-workflow-article/internal/fetcher"
 	"github.com/steviee/github-workflow-article/internal/placeholder"
 	"github.com/steviee/github-workflow-article/internal/processor"
@@ -23,6 +25,17 @@ const (
 	defaultMaxImageSize = 52428800 // 50MB
 	defaultTimeout      = 30 * time.Second
 )
+
+// imageCache is the package-level cache instance
+var imageCache *cache.Cache
+
+// InitializeCache creates and starts the image cache with the specified TTL and cleanup interval.
+// The cache cleanup goroutine runs until the provided context is cancelled.
+func InitializeCache(ctx context.Context, ttl, cleanupInterval time.Duration) {
+	imageCache = cache.NewCache(ttl, cleanupInterval)
+	imageCache.Start(ctx)
+	log.Printf("Image cache initialized with TTL=%v, cleanup interval=%v", ttl, cleanupInterval)
+}
 
 // ImageHandler handles GET /image requests
 // Query parameters:
@@ -44,6 +57,28 @@ func ImageHandler(w http.ResponseWriter, r *http.Request) {
 
 	operations := r.URL.Query().Get("op")
 
+	// Generate cache key based on URL and operations
+	cacheKey := cache.GenerateKey(imageURL, operations)
+
+	// Check cache first
+	if imageCache != nil {
+		if cachedData, found := imageCache.Get(cacheKey); found {
+			log.Printf("Cache HIT for URL=%s, operations=%s, key=%s", imageURL, operations, cacheKey)
+
+			// Return cached response
+			w.Header().Set("Content-Type", "image/png")
+			w.Header().Set("Content-Length", strconv.Itoa(len(cachedData)))
+			w.Header().Set("X-Cache", "HIT")
+			w.WriteHeader(http.StatusOK)
+
+			if _, err := w.Write(cachedData); err != nil {
+				log.Printf("Error writing cached image response: %v", err)
+			}
+			return
+		}
+		log.Printf("Cache MISS for URL=%s, operations=%s, key=%s", imageURL, operations, cacheKey)
+	}
+
 	// Create fetcher
 	f := fetcher.NewFetcher(defaultMaxImageSize, defaultTimeout)
 
@@ -57,11 +92,12 @@ func ImageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If no operations, return the fetched image as-is
+	// If no operations, return the fetched image as-is (don't cache unprocessed images)
 	if operations == "" {
 		w.Header().Set("Content-Type", result.ContentType)
 		w.Header().Set("Content-Length", strconv.FormatInt(result.Size, 10))
 		w.Header().Set("X-Original-URL", result.URL)
+		w.Header().Set("X-Cache", "SKIP")
 		w.WriteHeader(http.StatusOK)
 
 		if _, err := w.Write(result.Data); err != nil {
@@ -96,15 +132,23 @@ func ImageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Store in cache before returning (only cache successful responses)
+	imageData := buf.Bytes()
+	if imageCache != nil {
+		imageCache.Set(cacheKey, imageData)
+		log.Printf("Stored in cache: key=%s, size=%d bytes", cacheKey, len(imageData))
+	}
+
 	// Return processed image
 	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
+	w.Header().Set("Content-Length", strconv.Itoa(len(imageData)))
 	w.Header().Set("X-Original-URL", result.URL)
 	w.Header().Set("X-Original-Format", format)
 	w.Header().Set("X-Operations-Applied", operations)
+	w.Header().Set("X-Cache", "MISS")
 	w.WriteHeader(http.StatusOK)
 
-	if _, err := w.Write(buf.Bytes()); err != nil {
+	if _, err := w.Write(imageData); err != nil {
 		log.Printf("Error writing processed image response: %v", err)
 	}
 }

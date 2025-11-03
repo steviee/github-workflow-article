@@ -51,6 +51,15 @@ func main() {
 		"cache_cleanup_interval": cfg.CacheCleanupInterval,
 	}).Info("Image Processing API starting...")
 
+	// Create context for cache cleanup goroutine
+	// This context will be cancelled during graceful shutdown
+	cacheCtx, cacheCancel := context.WithCancel(context.Background())
+	defer cacheCancel()
+
+	// Initialize cache with cleanup goroutine
+	handler.InitializeCache(cacheCtx, cfg.CacheTTL, cfg.CacheCleanupInterval)
+	logger.Info("Cache initialized and cleanup goroutine started")
+
 	// Create chi router
 	router := chi.NewRouter()
 
@@ -94,14 +103,19 @@ func main() {
 
 	// Attempt graceful shutdown
 	logger.Info("Initiating graceful shutdown...")
+
+	// Cancel cache cleanup goroutine first
+	cacheCancel()
+	logger.Info("Cache cleanup goroutine stopped")
+
+	// Shutdown HTTP server
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
 	shutdownErr := server.Shutdown(shutdownCtx)
-	shutdownCancel()
 
 	if shutdownErr != nil {
 		logger.WithError(shutdownErr).Error("Error during shutdown")
-		logger.Error("Forced shutdown due to error")
-		os.Exit(1)
+		logger.Fatal("Forced shutdown due to error")
 	}
 
 	logger.Info("Server shutdown complete")
