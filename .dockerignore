@@ -1,0 +1,68 @@
+# Git files
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!go.mod
+!go.sum
+CLAUDE.md
+README.md
+LICENSE
+CHANGELOG.md
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build artifacts
+bin/
+api
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.out
+coverage.html
+
+# Test files
+*_test.go
+
+# CI/CD
+.github/
+
+# Dependencies
+vendor/
+
+# Temporary files
+tmp/
+temp/
+
+# Logs
+*.log
+
+# OS files
+Thumbs.db
+
+# Claude and AI assistant files
+.claude/
+.specstory/
+
+# Docker files (no need to copy to build context)
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-compose.*.yml
+
+# Environment files
+.env
+.env.*
+*.env
