@@ -100,6 +100,8 @@ func ImageHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
 	w.Header().Set("X-Original-URL", result.URL)
+	w.Header().Set("X-Original-Format", format)
+	w.Header().Set("X-Operations-Applied", operations)
 	w.WriteHeader(http.StatusOK)
 
 	if _, err := w.Write(buf.Bytes()); err != nil {
