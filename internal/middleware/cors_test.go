@@ -10,9 +10,9 @@ import (
 
 // testHandler is a simple handler that returns 200 OK
 func testHandler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 }
 
@@ -163,10 +163,10 @@ func TestCORS_ChainedWithOtherHandlers(t *testing.T) {
 	t.Parallel()
 
 	// Create a handler that sets a custom header
-	customHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	customHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("X-Custom-Header", "test-value")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Custom"))
+		_, _ = w.Write([]byte("Custom"))
 	})
 
 	// Wrap with CORS

@@ -14,9 +14,9 @@ func TestMetrics(t *testing.T) {
 	t.Parallel()
 
 	// Create a test handler
-	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	testHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	// Wrap with Metrics middleware
@@ -65,7 +65,7 @@ func TestMetrics_DifferentStatusCodes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			testHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tt.statusCode)
 			})
 
@@ -107,7 +107,7 @@ func TestMetrics_DifferentMethods(t *testing.T) {
 		t.Run(method, func(t *testing.T) {
 			t.Parallel()
 
-			testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			testHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			})
 
@@ -147,7 +147,7 @@ func TestMetrics_DifferentPaths(t *testing.T) {
 		t.Run(path, func(t *testing.T) {
 			t.Parallel()
 
-			testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			testHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			})
 
@@ -175,7 +175,7 @@ func TestMetrics_DifferentPaths(t *testing.T) {
 func TestMetrics_RequestDuration(t *testing.T) {
 	t.Parallel()
 
-	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	testHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -195,8 +195,8 @@ func TestMetrics_WriteWithoutExplicitHeader(t *testing.T) {
 	t.Parallel()
 
 	// Handler that writes without calling WriteHeader explicitly
-	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("OK")) // Should implicitly set status to 200
+	testHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("OK")) // Should implicitly set status to 200
 	})
 
 	wrappedHandler := Metrics(testHandler)
@@ -224,10 +224,10 @@ func TestMetrics_MultipleWrites(t *testing.T) {
 	t.Parallel()
 
 	// Handler that writes multiple times
-	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	testHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Part 1"))
-		w.Write([]byte("Part 2"))
+		_, _ = w.Write([]byte("Part 1"))
+		_, _ = w.Write([]byte("Part 2"))
 	})
 
 	wrappedHandler := Metrics(testHandler)
@@ -250,9 +250,9 @@ func TestMetrics_MultipleWrites(t *testing.T) {
 func TestMetrics_ErrorResponses(t *testing.T) {
 	t.Parallel()
 
-	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	testHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Error"))
+		_, _ = w.Write([]byte("Error"))
 	})
 
 	wrappedHandler := Metrics(testHandler)
@@ -279,7 +279,7 @@ func TestMetrics_ErrorResponses(t *testing.T) {
 func TestMetrics_ConcurrentRequests(t *testing.T) {
 	t.Parallel()
 
-	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	testHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -321,9 +321,9 @@ func TestMetrics_PreservesResponseBody(t *testing.T) {
 
 	expectedBody := "Hello, World!"
 
-	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	testHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(expectedBody))
+		_, _ = w.Write([]byte(expectedBody))
 	})
 
 	wrappedHandler := Metrics(testHandler)
@@ -340,7 +340,7 @@ func TestMetrics_PreservesResponseBody(t *testing.T) {
 func TestMetrics_Labels(t *testing.T) {
 	t.Parallel()
 
-	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	testHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 	})
 
@@ -363,7 +363,7 @@ func TestMetricsResponseWriter_MultipleWriteHeaders(t *testing.T) {
 	t.Parallel()
 
 	// Handler that tries to call WriteHeader multiple times
-	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	testHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.WriteHeader(http.StatusInternalServerError) // Should be ignored
 	})

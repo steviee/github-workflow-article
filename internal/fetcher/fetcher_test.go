@@ -95,7 +95,7 @@ func TestFetch_InvalidContentType(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", tc.contentType)
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte("not an image"))
@@ -115,7 +115,7 @@ func TestFetch_InvalidContentType(t *testing.T) {
 func TestFetch_ContentLengthTooLarge(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "image/jpeg")
 		w.Header().Set("Content-Length", "2000") // Larger than maxSize
 		w.WriteHeader(http.StatusOK)
@@ -135,7 +135,7 @@ func TestFetch_ContentLengthTooLarge(t *testing.T) {
 func TestFetch_ActualSizeTooLarge(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "image/jpeg")
 		// Don't set Content-Length, force reading to detect size
 		w.WriteHeader(http.StatusOK)
@@ -168,7 +168,7 @@ func TestFetch_HTTPErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tc.statusCode)
 			}))
 			defer server.Close()
@@ -186,7 +186,7 @@ func TestFetch_HTTPErrors(t *testing.T) {
 func TestFetch_EmptyResponse(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		w.WriteHeader(http.StatusOK)
 		// Don't write any data
@@ -204,7 +204,7 @@ func TestFetch_EmptyResponse(t *testing.T) {
 func TestFetch_Timeout(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		// Simulate slow server
 		time.Sleep(2 * time.Second)
 		w.Header().Set("Content-Type", "image/png")
@@ -244,7 +244,7 @@ func TestFetch_ValidRedirect(t *testing.T) {
 	t.Parallel()
 
 	// Create final destination server
-	finalServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	finalServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "image/gif")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("GIF89a"))
@@ -286,7 +286,7 @@ func TestFetch_DifferentImageTypes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", tc.contentType)
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write(tc.data)

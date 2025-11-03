@@ -34,7 +34,7 @@ func TestImageHandler_WithValidImage(t *testing.T) {
 
 	// Create a test server that serves a fake image
 	imageData := []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
-	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(imageData)
@@ -90,7 +90,7 @@ func TestImageHandler_WithHTTPError(t *testing.T) {
 	t.Parallel()
 
 	// Create a test server that returns 404
-	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer testServer.Close()
@@ -115,7 +115,7 @@ func TestImageHandler_WithNonImageContent(t *testing.T) {
 	t.Parallel()
 
 	// Create a test server that returns HTML instead of image
-	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("<html>Not an image</html>"))
@@ -177,7 +177,7 @@ func TestImageHandler_WithDifferentImageTypes(t *testing.T) {
 			t.Parallel()
 
 			// Create test server with specific image type
-			testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", tc.contentType)
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write(tc.data)
@@ -201,7 +201,7 @@ func TestImageHandler_MultipleRequests(t *testing.T) {
 
 	// Create test server
 	imageData := []byte("test-image-data")
-	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(imageData)
@@ -225,7 +225,7 @@ func TestImageHandler_ImageTooLarge(t *testing.T) {
 	t.Parallel()
 
 	// Create test server that returns image larger than 50MB
-	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		w.Header().Set("Content-Length", "52428801") // 50MB + 1 byte
 		w.WriteHeader(http.StatusOK)
