@@ -46,7 +46,10 @@ jobs:
 
       - name: Run tests with race detector
         run: |
-          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+          # Run all tests (including cmd)
+          go test -v -race ./...
+          # Generate coverage only for internal packages (excludes cmd/api/main.go which is just wiring)
+          go test -race -coverprofile=coverage.out -covermode=atomic ./internal/...
 
       - name: Check test coverage threshold
         run: |

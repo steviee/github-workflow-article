@@ -1,6 +1,9 @@
 # golangci-lint configuration
 # Reference: https://golangci-lint.run/usage/configuration/
 
+# Version of golangci-lint config format
+version: "2"
+
 run:
   # Timeout for analysis
   timeout: 5m
@@ -22,9 +25,8 @@ run:
 
 # Output configuration
 output:
-  # Colored output
-  formats:
-    - format: colored-line-number
+  # Output format: use colored line numbers
+  format: colored-line-number
 
   # Print lines of code with issue
   print-issued-lines: true
