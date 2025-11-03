@@ -2,12 +2,15 @@ package handler
 
 import (
 	"bytes"
+	"image"
+	"image/color"
 	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestImageHandler_MissingURL(t *testing.T) {
@@ -241,6 +244,256 @@ func TestImageHandler_ImageTooLarge(t *testing.T) {
 	assert.Equal(t, http.StatusBadGateway, rr.Code)
 	assert.Equal(t, "image/png", rr.Header().Get("Content-Type"))
 	assert.Equal(t, "true", rr.Header().Get("X-Placeholder"))
+}
+
+// getPixelColor returns the color for a given pixel position
+func getPixelColor(x, y, width, height int) color.RGBA {
+	midX := width / 2
+	midY := height / 2
+
+	if y < midY {
+		if x < midX {
+			return color.RGBA{255, 0, 0, 255} // Top-left: Red
+		}
+		return color.RGBA{0, 255, 0, 255} // Top-right: Green
+	}
+
+	if x < midX {
+		return color.RGBA{0, 0, 255, 255} // Bottom-left: Blue
+	}
+	return color.RGBA{255, 255, 0, 255} // Bottom-right: Yellow
+}
+
+// Helper function to create a simple test image with known properties
+func createTestPNGImage(width, height int) []byte {
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+
+	// Fill with distinct colors in each quadrant for testing rotation
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			c := getPixelColor(x, y, width, height)
+			img.Set(x, y, c)
+		}
+	}
+
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, img)
+	return buf.Bytes()
+}
+
+func TestImageHandler_WithRotate90(t *testing.T) {
+	t.Parallel()
+
+	// Create a 100x200 test image
+	imageData := createTestPNGImage(100, 200)
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(imageData)
+	}))
+	defer testServer.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/image?url="+testServer.URL+"&op=rotate-90", nil)
+	rr := httptest.NewRecorder()
+
+	ImageHandler(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, "image/png", rr.Header().Get("Content-Type"))
+	assert.Equal(t, "png", rr.Header().Get("X-Original-Format"))
+	assert.Equal(t, "rotate-90", rr.Header().Get("X-Operations-Applied"))
+
+	// Decode and verify dimensions were swapped
+	img, err := png.Decode(bytes.NewReader(rr.Body.Bytes()))
+	require.NoError(t, err)
+
+	bounds := img.Bounds()
+	assert.Equal(t, 200, bounds.Dx(), "Width should be original height")
+	assert.Equal(t, 100, bounds.Dy(), "Height should be original width")
+}
+
+func TestImageHandler_WithRotate180(t *testing.T) {
+	t.Parallel()
+
+	imageData := createTestPNGImage(100, 100)
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(imageData)
+	}))
+	defer testServer.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/image?url="+testServer.URL+"&op=rotate-180", nil)
+	rr := httptest.NewRecorder()
+
+	ImageHandler(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, "image/png", rr.Header().Get("Content-Type"))
+	assert.Equal(t, "rotate-180", rr.Header().Get("X-Operations-Applied"))
+
+	// Decode and verify dimensions stayed the same
+	img, err := png.Decode(bytes.NewReader(rr.Body.Bytes()))
+	require.NoError(t, err)
+
+	bounds := img.Bounds()
+	assert.Equal(t, 100, bounds.Dx())
+	assert.Equal(t, 100, bounds.Dy())
+}
+
+func TestImageHandler_WithRotate270(t *testing.T) {
+	t.Parallel()
+
+	imageData := createTestPNGImage(200, 100)
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(imageData)
+	}))
+	defer testServer.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/image?url="+testServer.URL+"&op=rotate-270", nil)
+	rr := httptest.NewRecorder()
+
+	ImageHandler(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, "image/png", rr.Header().Get("Content-Type"))
+	assert.Equal(t, "rotate-270", rr.Header().Get("X-Operations-Applied"))
+
+	// Decode and verify dimensions were swapped
+	img, err := png.Decode(bytes.NewReader(rr.Body.Bytes()))
+	require.NoError(t, err)
+
+	bounds := img.Bounds()
+	assert.Equal(t, 100, bounds.Dx(), "Width should be original height")
+	assert.Equal(t, 200, bounds.Dy(), "Height should be original width")
+}
+
+func TestImageHandler_WithMultipleOperations(t *testing.T) {
+	t.Parallel()
+
+	imageData := createTestPNGImage(100, 100)
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(imageData)
+	}))
+	defer testServer.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/image?url="+testServer.URL+"&op=rotate-90,rotate-90", nil)
+	rr := httptest.NewRecorder()
+
+	ImageHandler(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, "image/png", rr.Header().Get("Content-Type"))
+	assert.Equal(t, "rotate-90,rotate-90", rr.Header().Get("X-Operations-Applied"))
+
+	// Verify it's a valid PNG
+	img, err := png.Decode(bytes.NewReader(rr.Body.Bytes()))
+	require.NoError(t, err)
+	assert.NotNil(t, img)
+}
+
+func TestImageHandler_WithInvalidOperation(t *testing.T) {
+	t.Parallel()
+
+	imageData := createTestPNGImage(100, 100)
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(imageData)
+	}))
+	defer testServer.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/image?url="+testServer.URL+"&op=invalid-operation", nil)
+	rr := httptest.NewRecorder()
+
+	ImageHandler(rr, req)
+
+	// Should return 400 Bad Request with placeholder
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.Equal(t, "image/png", rr.Header().Get("Content-Type"))
+	assert.Equal(t, "true", rr.Header().Get("X-Placeholder"))
+}
+
+func TestImageHandler_WithInvalidImageData(t *testing.T) {
+	t.Parallel()
+
+	// Serve corrupted image data
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("invalid image data"))
+	}))
+	defer testServer.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/image?url="+testServer.URL+"&op=rotate-90", nil)
+	rr := httptest.NewRecorder()
+
+	ImageHandler(rr, req)
+
+	// Should return 500 with placeholder (decoding error)
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+	assert.Equal(t, "image/png", rr.Header().Get("Content-Type"))
+	assert.Equal(t, "true", rr.Header().Get("X-Placeholder"))
+}
+
+func TestApplyOperations(t *testing.T) {
+	// Create a simple test image
+	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
+
+	tests := []struct {
+		name        string
+		operations  string
+		expectError bool
+	}{
+		{
+			name:        "single rotation",
+			operations:  "rotate-90",
+			expectError: false,
+		},
+		{
+			name:        "multiple rotations",
+			operations:  "rotate-90,rotate-180",
+			expectError: false,
+		},
+		{
+			name:        "invalid operation",
+			operations:  "invalid-op",
+			expectError: true,
+		},
+		{
+			name:        "mixed valid and invalid",
+			operations:  "rotate-90,invalid-op",
+			expectError: true,
+		},
+		{
+			name:        "empty operation",
+			operations:  "",
+			expectError: false,
+		},
+		{
+			name:        "operations with spaces",
+			operations:  "rotate-90 , rotate-180",
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := applyOperations(img, tt.operations)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Nil(t, result)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, result)
+			}
+		})
+	}
 }
 
 func TestSendPlaceholder(t *testing.T) {
