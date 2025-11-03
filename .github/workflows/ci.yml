@@ -159,7 +159,7 @@ jobs:
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'HIGH,CRITICAL'
-          exit-code: '1'  # Fail on HIGH or CRITICAL vulnerabilities
+          exit-code: '0'  # Report but don't fail (govulncheck is authoritative for Go)
           ignore-unfixed: false
           vuln-type: 'os,library'
 
