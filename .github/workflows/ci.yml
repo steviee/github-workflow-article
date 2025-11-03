@@ -106,7 +106,7 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.1.6  # Use v2.x for Go 1.24 support and v2 config schema
           args: --timeout=5m --config=.golangci.yml
