@@ -260,7 +260,15 @@ jobs:
           docker stop test-container
           docker rm test-container
 
-      - name: Scan Docker image with Trivy
+      - name: Scan Docker image with Trivy (table output)
+        uses: aquasecurity/trivy-action@master
+        with:
+          input: '/tmp/image.tar'
+          format: 'table'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '0'  # Report only, don't fail
+
+      - name: Scan Docker image with Trivy (SARIF)
         uses: aquasecurity/trivy-action@master
         with:
           input: '/tmp/image.tar'
