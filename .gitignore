@@ -23,9 +23,9 @@ vendor/
 /dist/
 /build/
 
-# Application binary
-api
-cmd/api/api
+# Application binary (not the cmd/api directory!)
+/api
+/cmd/api/api
 
 # IDE and editor files
 .vscode/
