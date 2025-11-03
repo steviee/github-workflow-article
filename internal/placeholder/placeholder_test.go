@@ -1,9 +1,9 @@
 package placeholder
 
 import (
+	"bytes"
 	"image"
 	"image/png"
-	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/assert"

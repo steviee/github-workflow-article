@@ -13,15 +13,15 @@ import (
 type Fetcher struct {
 	client      *http.Client
 	maxSize     int64
-	userAgent   string
 	maxRedirect int
+	userAgent   string
 }
 
 // FetchResult contains the fetched image data and metadata
 type FetchResult struct {
 	Data        []byte
-	ContentType string
 	Size        int64
+	ContentType string
 	URL         string
 }
 
@@ -30,7 +30,7 @@ func NewFetcher(maxSize int64, timeout time.Duration) *Fetcher {
 	return &Fetcher{
 		client: &http.Client{
 			Timeout: timeout,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			CheckRedirect: func(_ *http.Request, via []*http.Request) error {
 				if len(via) >= 10 {
 					return fmt.Errorf("too many redirects")
 				}
@@ -51,7 +51,7 @@ func (f *Fetcher) Fetch(url string) (*FetchResult, error) {
 	}
 
 	// Create request with custom headers
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -63,7 +63,12 @@ func (f *Fetcher) Fetch(url string) (*FetchResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch URL: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log the error but don't override the main error
+			_ = closeErr
+		}
+	}()
 
 	// Check HTTP status
 	if resp.StatusCode != http.StatusOK {

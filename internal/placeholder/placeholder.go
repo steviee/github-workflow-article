@@ -124,8 +124,8 @@ func addLabel(img *image.RGBA, label string, col color.Color) {
 	}
 
 	point := fixed.Point26_6{
-		X: fixed.Int26_6(x * 64),
-		Y: fixed.Int26_6(y * 64),
+		X: fixed.Int26_6(int32(x) * 64),
+		Y: fixed.Int26_6(int32(y) * 64),
 	}
 
 	d := &font.Drawer{
