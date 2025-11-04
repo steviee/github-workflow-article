@@ -105,14 +105,17 @@ func enforceMaxDimensions(width, height int) (int, int) {
 }
 
 // Rotate90 rotates an image 90 degrees clockwise while preserving transparency.
+// Note: The imaging library's Rotate270 function rotates counter-clockwise,
+// so 270° CCW equals 90° CW.
 func Rotate90(img image.Image) image.Image {
 	if img == nil {
 		return nil
 	}
-	return imaging.Rotate90(img)
+	return imaging.Rotate270(img)
 }
 
 // Rotate180 rotates an image 180 degrees clockwise while preserving transparency.
+// Note: 180° rotation is the same in both clockwise and counter-clockwise directions.
 func Rotate180(img image.Image) image.Image {
 	if img == nil {
 		return nil
@@ -121,9 +124,11 @@ func Rotate180(img image.Image) image.Image {
 }
 
 // Rotate270 rotates an image 270 degrees clockwise while preserving transparency.
+// Note: The imaging library's Rotate90 function rotates counter-clockwise,
+// so 90° CCW equals 270° CW.
 func Rotate270(img image.Image) image.Image {
 	if img == nil {
 		return nil
 	}
-	return imaging.Rotate270(img)
+	return imaging.Rotate90(img)
 }
